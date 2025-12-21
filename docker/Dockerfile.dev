@@ -1,0 +1,40 @@
+# ============================================================
+# braiins-os-mcp-server - Development Dockerfile
+# ============================================================
+# Includes all development tools, hot reload, and debugging
+# ============================================================
+
+FROM node:20-alpine
+
+# Install development tools
+RUN apk add --no-cache \
+    libc6-compat \
+    python3 \
+    make \
+    g++ \
+    git \
+    curl \
+    bash
+
+# Set environment
+ENV NODE_ENV=development
+ENV PORT=3000
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Install all dependencies including dev
+RUN npm install
+
+# Copy source code (will be overwritten by volume mount in dev)
+COPY . .
+
+# Expose ports
+# 3000: HTTP server
+# 9229: Node.js debugger
+EXPOSE 3000 9229
+
+# Development command with hot reload
+CMD ["npm", "run", "dev"]

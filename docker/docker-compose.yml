@@ -1,0 +1,99 @@
+# ============================================================
+# braiins-os-mcp-server - Docker Compose for Development
+# ============================================================
+# Services:
+#   - mcp-server: Main MCP application
+#   - redis: Caching and session storage
+#   - redis-commander: Redis GUI (optional, for debugging)
+# ============================================================
+
+services:
+  # ==================== MCP Server ====================
+  mcp-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    container_name: braiins-mcp-server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"     # HTTP API
+      - "9229:9229"     # Node.js debugger
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - TRANSPORT=http
+      - LOG_LEVEL=debug
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GRPC_DEFAULT_HOST=host.docker.internal
+      - GRPC_DEFAULT_PORT=50051
+      - GRPC_USE_TLS=false
+    volumes:
+      - ../src:/app/src:ro        # Source code (read-only for hot reload)
+      - ../tests:/app/tests:ro    # Tests
+      - ../proto:/app/proto:ro    # Proto files
+      - node_modules:/app/node_modules  # Named volume for node_modules
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - mcp-network
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ==================== Redis ====================
+  redis:
+    image: redis:7-alpine
+    container_name: braiins-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - mcp-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ==================== Redis Commander (Optional GUI) ====================
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: braiins-redis-commander
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - mcp-network
+    profiles:
+      - tools  # Only starts with: docker-compose --profile tools up
+
+# ==================== Networks ====================
+networks:
+  mcp-network:
+    driver: bridge
+
+# ==================== Volumes ====================
+volumes:
+  redis-data:
+    driver: local
+  node_modules:
+    driver: local
