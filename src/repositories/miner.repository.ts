@@ -7,10 +7,10 @@
  * @module repositories/miner
  */
 
-import { createChildLogger } from '../utils/logger';
-import { MinerNotFoundError, ValidationError } from '../utils/errors';
-import { RedisClient, cacheKeys, cacheTTL } from '../cache/redis';
 import { BraiinsClient } from '../api/braiins';
+import { RedisClient, cacheKeys, cacheTTL } from '../cache/redis';
+import { MinerNotFoundError, ValidationError } from '../utils/errors';
+import { createChildLogger } from '../utils/logger';
 import type {
   IMinerRepository,
   IMinerStatusRepository,
@@ -298,7 +298,7 @@ export function createMinerStatusRepository(
   return {
     async getStatus(minerId: string): Promise<MinerStatus | null> {
       const entity = await minerRepo.findById(minerId);
-      if (!entity) return null;
+      if (!entity) {return null;}
 
       // Check cache
       if (cache) {

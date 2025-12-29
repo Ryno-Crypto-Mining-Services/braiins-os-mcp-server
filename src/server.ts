@@ -11,11 +11,11 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import express, { Application } from 'express';
 import helmet from 'helmet';
-import { createMCPServer, MCPServerWithServices } from './mcp/server';
 import { setupRoutes } from './api/rest/routes';
 import { createRedisClient, RedisClient } from './cache/redis';
-import { logger } from './utils/logger';
 import type { AppConfig } from './config/env';
+import { createMCPServer, MCPServerWithServices } from './mcp/server';
+import { logger } from './utils/logger';
 
 /**
  * Server wrapper that manages the MCP server and its dependencies.

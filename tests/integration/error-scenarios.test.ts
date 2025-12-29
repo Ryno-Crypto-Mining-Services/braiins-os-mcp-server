@@ -6,8 +6,8 @@
  */
 
 import { createBraiinsClient, BraiinsClient, BraiinsApiError } from '../../src/api/braiins/client';
-import { UnauthorizedError, MinerNotFoundError } from '../../src/utils/errors';
 import { createMinerService, MinerService } from '../../src/services/miner.service';
+import { UnauthorizedError, MinerNotFoundError } from '../../src/utils/errors';
 
 // Mock fetch globally
 const mockFetch = jest.fn();

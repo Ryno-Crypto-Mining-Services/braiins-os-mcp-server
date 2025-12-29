@@ -9,12 +9,12 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListResourcesRequestSchema, ListToolsRequestSchema, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { createChildLogger } from '../utils/logger';
-import { RedisClient } from '../cache/redis';
 import { createBraiinsClient, BraiinsClient } from '../api/braiins';
-import { createMinerService, MinerService, MinerRegistration } from '../services/miner.service';
+import { RedisClient } from '../cache/redis';
 import { SERVER_INFO, MCP_SCHEMES } from '../config/constants';
 import type { AppConfig } from '../config/env';
+import { createMinerService, MinerService, MinerRegistration } from '../services/miner.service';
+import { createChildLogger } from '../utils/logger';
 
 const mcpLogger = createChildLogger({ module: 'mcp' });
 

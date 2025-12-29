@@ -3,8 +3,8 @@
  */
 
 import { createBraiinsClient, BraiinsClient, BraiinsApiError } from '../../../src/api/braiins/client';
-import { UnauthorizedError } from '../../../src/utils/errors';
 import type { MinerConnectionConfig, MinerInfo, HashboardsResponse, PoolsResponse } from '../../../src/api/braiins/types';
+import { UnauthorizedError } from '../../../src/utils/errors';
 
 // Mock fetch globally
 const mockFetch = jest.fn();

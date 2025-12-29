@@ -137,8 +137,8 @@ export function createBraiinsClient(options: BraiinsClientOptions = {}): Braiins
    * Gets the base URL for a miner.
    */
   function getBaseUrl(minerConfig: MinerConnectionConfig): string {
-    const protocol = minerConfig.useTls ? 'https' : 'http';
-    const port = minerConfig.port ?? (minerConfig.useTls ? 443 : 80);
+    const protocol = (minerConfig.useTls ?? false) ? 'https' : 'http';
+    const port = minerConfig.port ?? ((minerConfig.useTls ?? false) ? 443 : 80);
     return `${protocol}://${minerConfig.host}:${port}`;
   }
 
@@ -186,7 +186,7 @@ export function createBraiinsClient(options: BraiinsClientOptions = {}): Braiins
             'Content-Type': 'application/json',
             Authorization: `Bearer ${session.token}`,
           },
-          body: body ? JSON.stringify(body) : undefined,
+          body: body !== null && body !== undefined ? JSON.stringify(body) : undefined,
           signal: controller.signal,
         });
 
@@ -230,7 +230,9 @@ export function createBraiinsClient(options: BraiinsClientOptions = {}): Braiins
         });
 
         // Exponential backoff
-        await new Promise((resolve) => setTimeout(resolve, config.retryDelay * Math.pow(2, attempt - 1)));
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, config.retryDelay * Math.pow(2, attempt - 1));
+        });
       }
     }
 

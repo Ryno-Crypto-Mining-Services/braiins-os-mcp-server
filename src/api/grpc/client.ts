@@ -208,7 +208,9 @@ export async function createGrpcClient(config: GrpcConfig): Promise<GrpcClient> 
         });
 
         if (attempt < GRPC_CONFIG.MAX_RETRIES) {
-          await new Promise((resolve) => setTimeout(resolve, backoff));
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, backoff);
+          });
           backoff = Math.min(backoff * GRPC_CONFIG.BACKOFF_MULTIPLIER, GRPC_CONFIG.MAX_BACKOFF_MS);
         }
       }

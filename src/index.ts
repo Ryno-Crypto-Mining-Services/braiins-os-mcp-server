@@ -7,9 +7,9 @@
  * @module braiins-os-mcp-server
  */
 
+import { loadConfig } from './config/env';
 import { createServer } from './server';
 import { logger } from './utils/logger';
-import { loadConfig } from './config/env';
 
 /**
  * Bootstrap the MCP server application.

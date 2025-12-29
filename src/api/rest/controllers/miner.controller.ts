@@ -9,8 +9,6 @@
 
 import { Request, Response, NextFunction, Router } from 'express';
 import { z } from 'zod';
-import { createChildLogger } from '../../../utils/logger';
-import { ValidationError, MinerNotFoundError } from '../../../utils/errors';
 import {
   IMinerRepository,
   IMinerStatusRepository,
@@ -21,6 +19,8 @@ import {
   PowerTargetSchema,
   HashrateTargetSchema,
 } from '../../../repositories';
+import { ValidationError, MinerNotFoundError } from '../../../utils/errors';
+import { createChildLogger } from '../../../utils/logger';
 import { BraiinsClient } from '../../braiins';
 
 const controllerLogger = createChildLogger({ module: 'miner-controller' });
@@ -64,6 +64,17 @@ function validate<T>(schema: z.ZodSchema<T>, data: unknown): T {
 }
 
 /**
+ * Wraps async Express route handlers to properly handle promise rejections.
+ */
+type AsyncRequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
+
+function asyncHandler(fn: AsyncRequestHandler) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    void fn(req, res, next).catch(next);
+  };
+}
+
+/**
  * Controller dependencies.
  */
 export interface MinerControllerDependencies {
@@ -88,7 +99,9 @@ export function createMinerController(deps: MinerControllerDependencies): Router
    * POST /miners
    * Register a new miner.
    */
-  router.post('/', async (req: Request, res: Response, next: NextFunction) => {
+  router.post(
+    '/',
+    asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const input = validate(MinerRegistrationSchema, req.body);
 
@@ -130,14 +143,17 @@ export function createMinerController(deps: MinerControllerDependencies): Router
     } catch (error) {
       next(error);
     }
-  });
+  })
+  );
 
   /**
    * GET /miners
    * List miners with optional filtering and pagination.
    */
-  router.get('/', async (req: Request, res: Response, next: NextFunction) => {
-    try {
+  router.get(
+    '/',
+    asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    try{
       // Parse query parameters
       const filterInput = validate(MinerFilterSchema, {
         status: (req.query.status as string) ?? 'all',
@@ -160,20 +176,20 @@ export function createMinerController(deps: MinerControllerDependencies): Router
       // Apply defaults to ensure required fields are present
       const filter = {
         ...filterInput,
-        status: filterInput.status ?? 'all',
-      } as const;
+        status: filterInput.status ?? ('all' as const),
+      };
 
       const pagination = {
         ...paginationInput,
         page: paginationInput.page ?? 1,
         limit: paginationInput.limit ?? 20,
-        sortBy: paginationInput.sortBy ?? 'name',
-        sortOrder: paginationInput.sortOrder ?? 'asc',
-      } as const;
+        sortBy: paginationInput.sortBy ?? ('name' as const),
+        sortOrder: paginationInput.sortOrder ?? ('asc' as const),
+      };
 
       controllerLogger.debug('Listing miners', { filter, pagination });
 
-      const result = await minerRepo.findAll(filter as any, pagination as any);
+      const result = await minerRepo.findAll(filter, pagination);
 
       // Optionally include status data
       const includeStatus = req.query.includeStatus === 'true';
@@ -228,13 +244,16 @@ export function createMinerController(deps: MinerControllerDependencies): Router
     } catch (error) {
       next(error);
     }
-  });
+  })
+  );
 
   /**
    * GET /miners/:id
    * Get a specific miner by ID.
    */
-  router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  router.get(
+    '/:id',
+    asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
       if (!id) {
@@ -264,13 +283,16 @@ export function createMinerController(deps: MinerControllerDependencies): Router
     } catch (error) {
       next(error);
     }
-  });
+  })
+  );
 
   /**
    * PATCH /miners/:id
    * Update a miner.
    */
-  router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  router.patch(
+    '/:id',
+    asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
       if (!id) {
@@ -302,13 +324,16 @@ export function createMinerController(deps: MinerControllerDependencies): Router
     } catch (error) {
       next(error);
     }
-  });
+  })
+  );
 
   /**
    * DELETE /miners/:id
    * Remove a miner.
    */
-  router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  router.delete(
+    '/:id',
+    asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
       if (!id) {
@@ -329,7 +354,8 @@ export function createMinerController(deps: MinerControllerDependencies): Router
     } catch (error) {
       next(error);
     }
-  });
+  })
+  );
 
   // ==================== Status Operations ====================
 
@@ -337,7 +363,9 @@ export function createMinerController(deps: MinerControllerDependencies): Router
    * GET /miners/:id/status
    * Get real-time status of a miner.
    */
-  router.get('/:id/status', async (req: Request, res: Response, next: NextFunction) => {
+  router.get(
+    '/:id/status',
+    asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
       if (!id) {
@@ -384,7 +412,8 @@ export function createMinerController(deps: MinerControllerDependencies): Router
     } catch (error) {
       next(error);
     }
-  });
+  })
+  );
 
   // ==================== Operations ====================
 
@@ -392,7 +421,9 @@ export function createMinerController(deps: MinerControllerDependencies): Router
    * POST /miners/:id/reboot
    * Reboot a miner.
    */
-  router.post('/:id/reboot', async (req: Request, res: Response, next: NextFunction) => {
+  router.post(
+    '/:id/reboot',
+    asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
       if (!id) {
@@ -433,13 +464,16 @@ export function createMinerController(deps: MinerControllerDependencies): Router
     } catch (error) {
       next(error);
     }
-  });
+  })
+  );
 
   /**
    * POST /miners/:id/power-target
    * Set power consumption target.
    */
-  router.post('/:id/power-target', async (req: Request, res: Response, next: NextFunction) => {
+  router.post(
+    '/:id/power-target',
+    asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
       if (!id) {
@@ -483,13 +517,16 @@ export function createMinerController(deps: MinerControllerDependencies): Router
     } catch (error) {
       next(error);
     }
-  });
+  })
+  );
 
   /**
    * POST /miners/:id/hashrate-target
    * Set hashrate target.
    */
-  router.post('/:id/hashrate-target', async (req: Request, res: Response, next: NextFunction) => {
+  router.post(
+    '/:id/hashrate-target',
+    asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
       if (!id) {
@@ -533,7 +570,8 @@ export function createMinerController(deps: MinerControllerDependencies): Router
     } catch (error) {
       next(error);
     }
-  });
+  })
+  );
 
   return router;
 }
@@ -552,7 +590,9 @@ export function createFleetController(deps: MinerControllerDependencies): Router
    * GET /fleet/status
    * Get aggregated fleet status.
    */
-  router.get('/status', async (req: Request, res: Response, next: NextFunction) => {
+  router.get(
+    '/status',
+    asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = req.query.tenantId as string | undefined;
 
@@ -584,7 +624,8 @@ export function createFleetController(deps: MinerControllerDependencies): Router
     } catch (error) {
       next(error);
     }
-  });
+  })
+  );
 
   return router;
 }

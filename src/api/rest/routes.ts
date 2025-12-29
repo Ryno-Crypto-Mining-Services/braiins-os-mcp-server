@@ -8,13 +8,13 @@
  */
 
 import { Application, Request, Response, NextFunction } from 'express';
-import { createChildLogger } from '../../utils/logger';
-import { wrapError, ValidationError } from '../../utils/errors';
 import { RedisClient } from '../../cache/redis';
-import { BraiinsClient } from '../braiins';
-import { createMinerRepository, createMinerStatusRepository, IMinerRepository, IMinerStatusRepository } from '../../repositories';
-import { createMinerController, createFleetController } from './controllers/miner.controller';
 import type { AppConfig } from '../../config/env';
+import { createMinerRepository, createMinerStatusRepository, IMinerRepository, IMinerStatusRepository } from '../../repositories';
+import { wrapError, ValidationError } from '../../utils/errors';
+import { createChildLogger } from '../../utils/logger';
+import { BraiinsClient } from '../braiins';
+import { createMinerController, createFleetController } from './controllers/miner.controller';
 
 const routeLogger = createChildLogger({ module: 'rest' });
 

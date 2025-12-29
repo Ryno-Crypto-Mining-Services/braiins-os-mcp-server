@@ -2,8 +2,8 @@
  * Error Classes Unit Tests
  */
 
-import { AppError, ValidationError, NotFoundError, MinerNotFoundError, GrpcConnectionError, isRetryable, wrapError } from '../../../src/utils/errors';
 import { ERROR_CODES, HTTP_STATUS } from '../../../src/config/constants';
+import { AppError, ValidationError, NotFoundError, MinerNotFoundError, GrpcConnectionError, isRetryable, wrapError } from '../../../src/utils/errors';
 
 describe('Error Classes', () => {
   describe('AppError', () => {
