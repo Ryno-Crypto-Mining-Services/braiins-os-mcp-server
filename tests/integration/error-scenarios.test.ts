@@ -5,6 +5,8 @@
  * across the Braiins API client and MinerService integration.
  */
 
+/* eslint-disable @typescript-eslint/require-await */
+
 import { createBraiinsClient, BraiinsClient, BraiinsApiError } from '../../src/api/braiins/client';
 import { createMinerService, MinerService } from '../../src/services/miner.service';
 import { UnauthorizedError, MinerNotFoundError } from '../../src/utils/errors';
@@ -283,49 +285,68 @@ describe('Error Scenarios Integration', () => {
         host: '192.168.1.101',
       });
 
-      // First miner succeeds, second fails
-      mockFetch
-        // Miner 1 auth
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ token: 'token1', timeout_s: 3600 }),
-        })
-        // Miner 1 info
-        .mockResolvedValueOnce({
-          ok: true,
-          text: async () => JSON.stringify({ uid: 'miner-1' }),
-        })
-        // Miner 1 hashboards
-        .mockResolvedValueOnce({
-          ok: true,
-          text: async () =>
-            JSON.stringify({
-              hashboards: [
-                {
-                  id: '1',
-                  stats: { hashrate: { terahash_per_second: 100 } },
-                  highest_chip_temp: { celsius: 65 },
-                },
-              ],
-            }),
-        })
-        // Miner 1 pools
-        .mockResolvedValueOnce({
-          ok: true,
-          text: async () => JSON.stringify([]),
-        })
-        // Miner 1 tuner
-        .mockResolvedValueOnce({
-          ok: true,
-          text: async () => JSON.stringify({}),
-        })
-        // Miner 1 errors
-        .mockResolvedValueOnce({
-          ok: true,
-          text: async () => JSON.stringify({ errors: [] }),
-        })
-        // Miner 2 auth fails
-        .mockRejectedValue(new Error('Connection refused'));
+      // Mock based on URL to handle parallel requests
+      mockFetch.mockImplementation((url: unknown) => {
+        const urlStr = String(url);
+
+        // Miner 1 (192.168.1.100) succeeds
+        if (urlStr.includes('192.168.1.100') === true) {
+          if (urlStr.includes('/login') === true) {
+            return Promise.resolve({
+              ok: true,
+              json: () => Promise.resolve({ token: 'token1', timeout_s: 3600 }),
+            });
+          }
+          if (urlStr.includes('/info') === true) {
+            return Promise.resolve({
+              ok: true,
+              text: () => Promise.resolve(JSON.stringify({ uid: 'miner-1' })),
+            });
+          }
+          if (urlStr.includes('/hashboards') === true) {
+            return Promise.resolve({
+              ok: true,
+              text: () =>
+                Promise.resolve(
+                  JSON.stringify({
+                    hashboards: [
+                      {
+                        id: '1',
+                        stats: { hashrate: { terahash_per_second: 100 } },
+                        highest_chip_temp: { celsius: 65 },
+                      },
+                    ],
+                  })
+                ),
+            });
+          }
+          if (urlStr.includes('/pools') === true) {
+            return Promise.resolve({
+              ok: true,
+              text: () => Promise.resolve(JSON.stringify([])),
+            });
+          }
+          if (urlStr.includes('/tuner-state') === true) {
+            return Promise.resolve({
+              ok: true,
+              text: () => Promise.resolve(JSON.stringify({})),
+            });
+          }
+          if (urlStr.includes('/errors') === true) {
+            return Promise.resolve({
+              ok: true,
+              text: () => Promise.resolve(JSON.stringify({ errors: [] })),
+            });
+          }
+        }
+
+        // Miner 2 (192.168.1.101) fails
+        if (urlStr.includes('192.168.1.101') === true) {
+          return Promise.reject(new Error('Connection refused'));
+        }
+
+        return Promise.reject(new Error(`Unexpected URL: ${urlStr}`));
+      });
 
       const fleetStatus = await minerService.getFleetStatus();
 
@@ -333,6 +354,9 @@ describe('Error Scenarios Integration', () => {
       expect(fleetStatus.onlineMiners).toBe(1);
       expect(fleetStatus.offlineMiners).toBe(1);
       expect(fleetStatus.totalHashrateThs).toBe(100);
+
+      // Reset mock implementation to avoid interfering with subsequent tests
+      mockFetch.mockReset();
     });
   });
 

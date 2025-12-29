@@ -163,13 +163,14 @@ export function createBraiinsClient(options: BraiinsClientOptions = {}): Braiins
   /**
    * Makes an authenticated HTTP request with retry logic.
    */
-  async function request<T>(host: string, method: string, endpoint: string, body?: unknown): Promise<T> {
+  async function request<T>(host: string, method: string, endpoint: string, body?: unknown, options?: { allowEmpty?: boolean }): Promise<T> {
     const session = getSession(host);
     const url = `${getBaseUrl(session.config)}${endpoint}`;
 
     let lastError: Error | null = null;
+    const maxAttempts = config.maxRetries + 1; // maxRetries = number of retries after initial attempt
 
-    for (let attempt = 1; attempt <= config.maxRetries; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         clientLogger.debug(`API request attempt ${attempt}`, {
           host,
@@ -205,7 +206,10 @@ export function createBraiinsClient(options: BraiinsClientOptions = {}): Braiins
         // Handle empty responses
         const text = await response.text();
         if (!text) {
-          return {} as T;
+          if (options?.allowEmpty === true) {
+            return {} as T;
+          }
+          throw new BraiinsApiError('Empty response body received', host, endpoint, HTTP_STATUS.BAD_GATEWAY, true);
         }
 
         return JSON.parse(text) as T;
@@ -217,8 +221,13 @@ export function createBraiinsClient(options: BraiinsClientOptions = {}): Braiins
           throw error;
         }
 
+        // Don't retry non-retryable errors (4xx client errors)
+        if (error instanceof BraiinsApiError && !error.retryable) {
+          throw error;
+        }
+
         // Don't retry on last attempt
-        if (attempt === config.maxRetries) {
+        if (attempt === maxAttempts) {
           break;
         }
 
@@ -236,7 +245,7 @@ export function createBraiinsClient(options: BraiinsClientOptions = {}): Braiins
       }
     }
 
-    throw new BraiinsApiError(`Request failed after ${config.maxRetries} attempts: ${lastError?.message}`, host, endpoint, HTTP_STATUS.BAD_GATEWAY, true);
+    throw new BraiinsApiError(`Request failed after ${maxAttempts} attempts: ${lastError?.message}`, host, endpoint, HTTP_STATUS.BAD_GATEWAY, true);
   }
 
   return {
@@ -395,7 +404,7 @@ export function createBraiinsClient(options: BraiinsClientOptions = {}): Braiins
     // ==================== System ====================
 
     async reboot(host: string): Promise<void> {
-      await request<void>(host, 'POST', '/api/v1/actions/reboot');
+      await request<void>(host, 'POST', '/api/v1/actions/reboot', undefined, { allowEmpty: true });
     },
 
     // ==================== Session Management ====================
