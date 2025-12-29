@@ -19,7 +19,7 @@ export class AppError extends Error {
   public readonly retryable: boolean;
   public readonly details?: Record<string, unknown>;
 
-  constructor(code: string, message: string, statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR, retryable = false, details?: Record<string, unknown>) {
+  constructor(code: string, message: string, statusCode: number = HTTP_STATUS.INTERNAL_SERVER_ERROR, retryable = false, details?: Record<string, unknown> | undefined) {
     super(message);
     this.name = this.constructor.name;
     this.code = code;

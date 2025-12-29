@@ -1,597 +1,875 @@
-# CLAUDE.md: Claude-Specific Development Instructions
-**braiins-os-mcp-server** | Extends AGENTS.md | December 2025
+# CLAUDE.md: Braiins OS MCP Server Development Instructions
+**Project:** braiins-os-mcp-server | **Version:** 1.0.0 | **Updated:** December 2025
 
 ---
 
-## 📖 Import Statement
+## 📖 Project Overview
 
-**→ See [AGENTS.md](./AGENTS.md) for core development standards**
+**braiins-os-mcp-server** is a Model Context Protocol (MCP) server that enables AI agents (Claude, Copilot) to safely interact with Braiins OS ASIC miners for Bitcoin mining operations management.
 
-This document extends AGENTS.md with Claude-specific capabilities and workflows. All foundational standards (Git operations, testing, security, collaboration) are defined in AGENTS.md and apply to Claude development work.
+### What This Project Does
 
----
+Provides a bridge between AI agents and Braiins OS miners through:
+- **MCP Tools**: AI-callable functions for miner management (status, firmware updates, configuration)
+- **MCP Resources**: Structured data access (fleet metrics, miner status, logs)
+- **MCP Prompts**: Guided workflows for common mining operations
+- **gRPC Client**: Communication layer to Braiins OS miners
+- **REST API**: HTTP endpoints for web/mobile clients
+- **Redis Cache**: Performance optimization for fleet operations
 
-## 🧠 Claude-Specific Capabilities
+### Technology Stack
 
-### Context Window Advantage (200K Tokens)
-
-Claude's 200K context window enables capabilities other agents cannot match:
-
-#### 1. Whole-System Architecture Review
-**When to use:** Designing multi-component features, identifying circular dependencies, optimizing data flow
-
-**Example workflow:**
-```
-1. Claude reads: ARCHITECTURE.md + all key modules (src/api/, src/cache/, src/mcp/)
-2. Claude identifies: Data flow bottlenecks, missing error handling, schema inconsistencies
-3. Claude proposes: Refactored architecture with explicit rationale
-4. Output: Design document + migration plan for implementation team
-```
-
-**Prompt template:**
-```
-You have full context of the braiins-os-mcp-server codebase. 
-Analyze the data flow for [feature name].
-Identify 5 architectural improvements.
-For each: explain why, estimate effort, rank by impact.
-```
-
-#### 2. Multi-File Refactoring
-**When to use:** Cross-cutting concerns (logging, error handling, caching), applying consistent patterns
-
-**Example workflow:**
-```
-1. Claude scans all error handling in src/api/, src/cache/, src/mcp/
-2. Claude identifies: Inconsistent error classes, different retry patterns
-3. Claude proposes: Unified error handling framework
-4. Output: Refactoring PR with 8-12 modified files, all changes explained
-```
-
-**Capability:** Can modify 10-15 files in single response while maintaining consistency
-
-#### 3. Legacy Code Analysis & Modernization
-**When to use:** Understanding complex existing implementations, proposing upgrades
-
-**Prompt template:**
-```
-I'll paste the current implementation of [module].
-You will:
-1. Explain what it does in 3-5 sentences
-2. Identify 3 modernization opportunities
-3. Provide refactored code for 1 opportunity
-4. Estimate effort for all 3
-```
-
-#### 4. Test Suite Design
-**When to use:** Planning comprehensive test coverage, creating test scaffolding
-
-**Output:** 50-100 well-structured test cases covering:
-- Happy paths
-- Error conditions
-- Edge cases
-- Integration points
-
-### Code Generation Strengths
-
-Claude excels at:
-
-| Task | Approach | Output Quality |
-|------|----------|----------------|
-| **TypeScript classes** | Provide interface + requirements | Excellent types, proper error handling |
-| **gRPC stubs** | Describe .proto structure | Accurate client wrappers with retry logic |
-| **Test suites** | Template + edge cases | Comprehensive with good assertions |
-| **Documentation** | Existing code + target audience | Detailed with examples |
-| **API handlers** | Design spec + existing patterns | Follows project conventions perfectly |
-
-### Workflow Limitations (Be Aware)
-
-⚠️ **Claude cannot:**
-- Directly execute npm commands (needs Builder agent)
-- Push to GitHub (needs DevOps agent)
-- Run tests in real environment (needs CI/CD)
-- Access external APIs in real-time
-- Modify .env or secrets (propose only)
+- **Runtime:** Node.js 20.x LTS
+- **Language:** TypeScript (strict mode)
+- **MCP SDK:** @modelcontextprotocol/sdk
+- **gRPC:** @grpc/grpc-js
+- **Cache:** Redis 7.x
+- **Testing:** Jest + Supertest
+- **Build:** TypeScript compiler + esbuild
 
 ---
 
-## 🎯 Claude's Preferred Workflows
+## 🎯 Core Development Principles
 
-### Workflow 1: Architecture Design (Start Here for New Features)
+### 1. Agent-First Design
 
-**Scope:** Feature conception through API design
+Design every feature from the AI agent's perspective:
 
-**Steps:**
-1. **Input:** Product requirement + business context
-2. **Analysis:** Review existing architecture in ARCHITECTURE.md
-3. **Design:** Propose data model, API endpoints, integration points
-4. **Output:** Design document with:
-   - Entity-relationship diagram (text-based)
-   - API endpoint specifications
-   - Database schema
-   - Integration points with existing modules
-   - Security considerations
-   - Testing strategy outline
-
-**Prompt template:**
-```
-Feature: [Name]
-Users: [Who needs this]
-Context: [Business reason]
-
-Please design this feature:
-1. Core data model (entities, relationships)
-2. API endpoints (RESTful specification)
-3. Integration with existing modules
-4. Security requirements
-5. Test scenarios
-
-Reference ARCHITECTURE.md and existing patterns.
+**✅ Good MCP Tool Design:**
+```typescript
+// Consolidates workflow: check status + update firmware + track job
+@tool({
+  name: "update_miner_firmware",
+  description: "Update firmware on one or more miners with progress tracking"
+})
+async updateMinerFirmware(params: {
+  minerIds: string[];    // Support batch operations
+  version: string;
+  force?: boolean;
+}): Promise<JobStatus> {
+  // Returns job ID + initial status
+  // Agent can poll with check_job_status tool
+}
 ```
 
-**Handoff:** Pass design to Builder agent for implementation
+**❌ Bad MCP Tool Design:**
+```typescript
+// Too granular - forces agent to orchestrate low-level steps
+@tool({ name: "check_miner_status" })
+async checkStatus(minerId: string) { /* ... */ }
 
-### Workflow 2: Implementation Review (During Development)
+@tool({ name: "download_firmware" })
+async downloadFirmware(url: string) { /* ... */ }
 
-**Scope:** Reviewing Builder's code before merge
-
-**Steps:**
-1. **Input:** GitHub PR with code changes
-2. **Analysis:** Review against AGENTS.md standards
-3. **Feedback:** Provide improvement suggestions
-4. **Output:** Detailed review with:
-   - Code quality assessment
-   - Security issues (if any)
-   - Performance observations
-   - Suggestions (not requirements) for improvement
-
-**Review checklist:**
-```markdown
-## Code Quality
-- [ ] Consistent with style guide (AGENTS.md #Code Editing Standards)
-- [ ] Proper TypeScript types (no 'any')
-- [ ] Error handling for all async operations
-- [ ] JSDoc comments on public methods
-
-## Testing
-- [ ] Tests follow template in AGENTS.md
-- [ ] Coverage >85%
-- [ ] Both happy path and error scenarios
-
-## Security
-- [ ] No hardcoded secrets
-- [ ] Input validation present
-- [ ] Sensitive data properly masked in logs
-
-## Performance
-- [ ] No obvious N+1 queries
-- [ ] Caching strategy appropriate
-- [ ] No unnecessary deep copies
-
-## Architecture
-- [ ] Follows established patterns
-- [ ] Integrates cleanly with existing modules
-- [ ] No circular dependencies
+@tool({ name: "flash_firmware" })
+async flashFirmware(minerId: string, path: string) { /* ... */ }
+// Agent must call 3+ tools for one logical operation
 ```
 
-**Handoff:** Send feedback to Builder for revisions
+### 2. Context-Optimized Responses
 
-### Workflow 3: Complex Problem-Solving
+Agents have limited context - make every token count:
 
-**Scope:** Debugging difficult issues, optimizing bottlenecks
+**Response Formats:**
+- **Concise Mode** (default): High-signal information only
+- **Detailed Mode** (optional): Comprehensive data for debugging
 
-**Example scenarios:**
-- "Why is gRPC connection timing out under load?"
-- "How can we reduce latency for multi-tenant queries?"
-- "What's causing the memory leak in the cache?"
+**Example:**
+```typescript
+// Concise: 150 tokens
+{
+  minerId: "miner-123",
+  status: "running",
+  hashrate: "95 TH/s",
+  temp: "65°C",
+  issues: []
+}
 
-**Approach:**
-1. **Gather context:** Ask for logs, error traces, relevant code
-2. **Analyze root cause:** Use reasoning to trace problem
-3. **Propose solutions:** Multiple options with trade-offs
-4. **Recommend validation:** How to test the fix
-
-**Prompt template:**
+// Detailed: 500+ tokens
+{
+  minerId: "miner-123",
+  status: "running",
+  statusDetails: { /* ... */ },
+  hashrate: { current: "95 TH/s", average24h: "93 TH/s", peak: "98 TH/s" },
+  temperature: { current: 65, average: 63, limit: 85, sensors: [/* ... */] },
+  pools: [/* ... */],
+  fans: [/* ... */],
+  // ... extensive details
+}
 ```
-Issue: [Problem description]
-Symptom: [What users see]
-Affected code: [Files/modules]
-Logs: [Paste relevant error traces]
 
-Analyze this issue:
-1. What's the root cause? (reasoning)
-2. Is it architectural or implementation?
-3. Propose 2-3 solutions with trade-offs
-4. Which approach is best for this codebase? Why?
-5. How would you test the fix?
+### 3. Error Messages as Agent Guidance
+
+Errors should guide agents toward solutions:
+
+**✅ Actionable Error:**
+```typescript
+throw new MCPError({
+  code: "MINER_UNREACHABLE",
+  message: "Cannot connect to miner miner-123 at 192.168.1.100:50051",
+  details: {
+    suggestion: "Try 'list_miners' to see all reachable miners, or use 'ping_miner' to test connectivity",
+    possibleCauses: ["Miner offline", "Network firewall", "Incorrect IP address"]
+  }
+});
+```
+
+**❌ Cryptic Error:**
+```typescript
+throw new Error("ECONNREFUSED");
+// Agent doesn't know what to do next
 ```
 
 ---
 
-## 🛠️ Claude + GitHub Copilot Integration
+## 🏗️ MCP Server Development Patterns
 
-### Division of Labor
+### Tool Development Workflow
 
-| Task | Claude | Copilot | Reason |
-|------|--------|---------|--------|
-| **System design** | ✅ Lead | - | Needs full context |
-| **Architecture review** | ✅ Lead | - | Requires big-picture thinking |
-| **Autocomplete during coding** | - | ✅ Lead | Real-time productivity |
-| **Complex algorithm** | ✅ Lead | - | Needs explanation/reasoning |
-| **Boilerplate generation** | - | ✅ Lead | Speed + pattern matching |
-| **Test scaffolding** | ✅ Lead | ✅ Assist | Claude for structure, Copilot for fill-in |
-| **Bug analysis** | ✅ Lead | - | Needs full codebase context |
-| **Documentation** | ✅ Lead | - | Needs narrative coherence |
-| **Quick refactoring** | - | ✅ Lead | Local scope, immediate |
-
-### Workflow Example: Adding New Feature
-
-```
-┌─ CLAUDE: Architecture & Design
-│  Input: Feature spec
-│  Output: Design document, API spec, data model
-│  Duration: 30 minutes
-│
-├─ COPILOT: Boilerplate & Scaffolding
-│  Input: Design document
-│  Tasks: Generate file structure, basic class skeletons
-│  Duration: 15 minutes
-│
-├─ COPILOT: Active Coding (Autocomplete)
-│  Input: Skeleton code
-│  Tasks: Implement business logic with suggestions
-│  Duration: 2-3 hours
-│  (Developer refines suggestions, ensures quality)
-│
-├─ COPILOT: Test Scaffolding
-│  Input: Implementation
-│  Tasks: Generate test boilerplate
-│  Duration: 30 minutes
-│
-├─ CLAUDE: Test Design & Review
-│  Input: Implementation + test scaffold
-│  Tasks: Design comprehensive test cases
-│  Duration: 1 hour
-│
-├─ COPILOT: Fill in Tests
-│  Input: Test outline
-│  Tasks: Implement assertions and fixtures
-│  Duration: 30 minutes
-│
-└─ CLAUDE: Final Review
-   Input: PR with code + tests
-   Output: Approval or improvement suggestions
-   Duration: 30 minutes
+**1. Design Phase**
+```typescript
+/**
+ * @tool update_pool_config
+ * @description Update mining pool configuration for one or more miners
+ *
+ * Design decisions:
+ * - Batch operation support (multiple minerIds)
+ * - Validation before applying changes
+ * - Atomic rollback if any miner fails
+ * - Progress tracking for long operations
+ */
 ```
 
----
+**2. Implementation Phase**
+```typescript
+import { z } from "zod";
+import { tool } from "@modelcontextprotocol/sdk";
 
-## 📋 Claude Tool Permissions & Boundaries
+// Input validation with Zod
+const UpdatePoolConfigSchema = z.object({
+  minerIds: z.array(z.string()).min(1).max(100),
+  poolUrl: z.string().url(),
+  username: z.string().min(1),
+  password: z.string().optional(),
+  priority: z.number().int().min(0).max(10).default(0)
+}).strict();
 
-### Permitted Operations
+@tool({
+  name: "update_pool_config",
+  description: "Update mining pool configuration for one or more miners",
+  inputSchema: UpdatePoolConfigSchema,
+  annotations: {
+    readOnlyHint: false,        // Modifies state
+    destructiveHint: false,     // Can be undone
+    idempotentHint: true,       // Same result if called multiple times
+    openWorldHint: true         // Interacts with external miners
+  }
+})
+async updatePoolConfig(params: z.infer<typeof UpdatePoolConfigSchema>) {
+  // 1. Validate miners exist
+  const miners = await this.getMinersByIds(params.minerIds);
 
-✅ **These are encouraged:**
+  // 2. Apply changes atomically
+  const results = await Promise.allSettled(
+    miners.map(m => this.grpcClient.updatePool(m, params))
+  );
 
-1. **Analysis & Design**
-   - Read any source file
-   - Analyze full codebase
-   - Design systems and APIs
-   - Create documentation
-
-2. **Code Review**
-   - Comment on PRs
-   - Suggest improvements
-   - Identify bugs/security issues
-   - Propose refactorings
-
-3. **Testing Strategies**
-   - Design test plans
-   - Create test code
-   - Identify coverage gaps
-   - Propose testing approaches
-
-4. **Documentation**
-   - Write/update guides
-   - Create API documentation
-   - Document architectural decisions
-   - Write troubleshooting guides
-
-5. **Knowledge Transfer**
-   - Explain complex systems
-   - Create training materials
-   - Discuss trade-offs
-   - Mentor on patterns/practices
-
-### Restricted Operations
-
-⛔ **These require human approval:**
-
-1. **Cannot modify code directly** (use Builder agent)
-   - No git commits
-   - No file modifications
-   - No pushing branches
-
-2. **Cannot execute commands** (use DevOps agent)
-   - No npm install/test/build
-   - No docker commands
-   - No production deployments
-
-3. **Cannot make security decisions alone**
-   - Cannot approve security fixes
-   - Cannot rotate keys
-   - Cannot modify auth policies
-
-4. **Cannot make business decisions**
-   - Cannot prioritize features
-   - Cannot make trade-offs between speed/quality
-   - Cannot decide on project direction
-
-### Request Patterns
-
-**Correct request to Claude:**
-```
-"Design the data model for feature X. 
-Provide TypeScript interfaces, explain relationships,
-suggest database schema. Then pass to Builder for implementation."
+  // 3. Return concise status
+  return {
+    success: results.filter(r => r.status === "fulfilled").length,
+    failed: results.filter(r => r.status === "rejected").length,
+    details: params.detailLevel === "verbose" ? results : undefined
+  };
+}
 ```
 
-**Incorrect request:**
-```
-"Implement feature X end-to-end."
-(Claude can't actually modify files or push code)
-```
+**3. Testing Phase**
+```typescript
+describe("update_pool_config tool", () => {
+  it("should update pool for single miner", async () => {
+    const result = await mcpServer.callTool("update_pool_config", {
+      minerIds: ["miner-1"],
+      poolUrl: "stratum+tcp://pool.example.com:3333",
+      username: "user.worker1"
+    });
 
-**Correct handoff pattern:**
-```
-@Claude: Design this system
-        ↓ (receives design)
-@Builder: Implement from design (code → PR)
-        ↓ (receives PR with code)
-@Claude: Review implementation
-        ↓ (receives feedback)
-@Builder: Revise based on review
-        ↓ (revised PR)
-@Validator: QA and merge
-```
+    expect(result.success).toBe(1);
+  });
 
----
+  it("should handle partial failures gracefully", async () => {
+    // miner-1 reachable, miner-2 offline
+    const result = await mcpServer.callTool("update_pool_config", {
+      minerIds: ["miner-1", "miner-2"],
+      poolUrl: "stratum+tcp://pool.example.com:3333",
+      username: "user.worker1"
+    });
 
-## 🔄 Integration Points with Other Agents
-
-### With Builder Agent
-
-**Claude → Builder:**
-- Design documents (detailed specs, interface definitions)
-- Code review feedback (improvement suggestions)
-- Test design outlines (test cases, edge cases)
-
-**Builder → Claude:**
-- Implementation questions ("How should I handle this edge case?")
-- Code for review (PRs with complete features)
-- Refactoring requests ("Redesign this module")
-
-**Handoff format:**
-```markdown
-## Claude Design Output
-Feature: Firmware Update Endpoint
-Entities: [diagram]
-Endpoints: [spec]
-Database: [schema]
-Integration: [points]
-Security: [considerations]
-
-@Builder: Ready for implementation.
-Questions? Tag me in PR with `@Claude review-when-ready`
+    expect(result.success).toBe(1);
+    expect(result.failed).toBe(1);
+  });
+});
 ```
 
-### With Architect Agent
+### Resource Development Workflow
 
-**Who decides what:**
-- **Architect:** Final authority on overall system design
-- **Claude:** Proposes architectural improvements, detailed sub-system design
+Resources provide structured data that agents can read:
 
-**When they disagree:**
-```
-Claude proposes: Microservices for firmware update
-Architect decides: Keep monolithic, add background jobs
-Resolution: Architect has final say on high-level decisions
-```
+```typescript
+import { resource } from "@modelcontextprotocol/sdk";
 
-### With DevOps Agent
+@resource({
+  uri: "braiins://fleet/summary",
+  name: "Fleet Summary",
+  description: "Aggregated metrics for all managed miners",
+  mimeType: "application/json"
+})
+async getFleetSummary(): Promise<FleetSummary> {
+  // Cache for 30 seconds (fleet data changes slowly)
+  const cached = await this.redis.get("fleet:summary");
+  if (cached) return JSON.parse(cached);
 
-**Claude → DevOps:**
-- Deployment strategy recommendations
-- Infrastructure requirements analysis
-- Monitoring/alerting suggestions
+  const summary = {
+    totalMiners: await this.countMiners(),
+    onlineMiners: await this.countMinersOnline(),
+    totalHashrate: await this.aggregateHashrate(),
+    averageTemp: await this.averageTemperature(),
+    activeAlerts: await this.getActiveAlerts()
+  };
 
-**DevOps → Claude:**
-- "How should monitoring be structured?"
-- "What metrics matter most?"
-- "Design the deployment pipeline"
-
----
-
-## 🎓 Best Practices for Claude on This Project
-
-### 1. Reference Existing Patterns
-
-**Always check for precedents before designing:**
-
-```
-❌ "Design an error handler"
-✅ "Review src/utils/errors.ts and design error handler
-    following existing patterns. Ensure consistency with
-    CustomError base class and error classification."
+  await this.redis.setex("fleet:summary", 30, JSON.stringify(summary));
+  return summary;
+}
 ```
 
-### 2. Be Specific About Constraints
+### Prompt Template Development
 
-**Good prompt:**
-```
-Design the firmware update API endpoint.
-Constraints:
-- Must support multiple miners in single request
-- Update can take 10-30 minutes
-- Must be resumable if connection drops
-- Cannot exceed gRPC connection timeout (30s)
-- Must not block other operations
-```
+Prompts guide agents through complex workflows:
 
-### 3. Propose, Don't Decide Business Trade-offs
+```typescript
+import { prompt } from "@modelcontextprotocol/sdk";
 
-**Good:**
-```
-Option A: Synchronous endpoint (simple, limits to 5 miners)
-Option B: Async with job queue (complex, unlimited miners)
-Product team should decide based on user needs.
-```
+@prompt({
+  name: "troubleshoot_miner_offline",
+  description: "Guided troubleshooting for offline miners",
+  arguments: [
+    { name: "minerId", description: "Miner ID to troubleshoot", required: true }
+  ]
+})
+async troubleshootMinerOffline(minerId: string): Promise<PromptMessage[]> {
+  const miner = await this.getMiner(minerId);
 
-**Bad:**
-```
-We should use async because it's better.
-(No business justification, no trade-offs)
-```
+  return [
+    {
+      role: "user",
+      content: {
+        type: "text",
+        text: `Miner ${minerId} is offline. Help me diagnose the issue.`
+      }
+    },
+    {
+      role: "assistant",
+      content: {
+        type: "text",
+        text: `I'll help troubleshoot miner ${minerId}. Let me check a few things:
 
-### 4. Always Explain Your Reasoning
+1. Checking last known status...
+   Last seen: ${miner.lastSeen}
+   Last status: ${miner.lastStatus}
 
-**Good:**
-```
-I recommend Redis pub/sub for real-time updates because:
-1. Miners broadcast status changes frequently (100s/min)
-2. Multiple clients need updates (web UI, mobile, Claude)
-3. No persistent storage needed (status is ephemeral)
-4. Existing Redis infrastructure in place
-5. Lower latency than database polling
+2. Testing network connectivity...
+   Use tool: ping_miner({ minerId: "${minerId}" })
 
-Alternative: WebSockets
-- Pros: Client-initiated connections, more control
-- Cons: More server overhead, harder clustering
-```
+3. Checking miner logs...
+   Use resource: braiins://miner/${minerId}/logs
 
-### 5. Create Actionable Handoffs
+Based on the results, I can suggest:
+- Reboot miner (if ping succeeds)
+- Check network/firewall (if ping fails)
+- Review logs for hardware issues
+- Check power supply
 
-**When handing off to Builder:**
-
-```markdown
-## Implementation Requirements
-
-### 1. Controller Method
-- File: src/api/handlers/firmware.ts
-- Method: updateMultiple()
-- Input validation: array of { minerId, version }
-- Error cases: handle 5 scenarios (see #452)
-
-### 2. Tests Required
-- Unit: 8 test cases (design in tests/unit/firmware.test.ts)
-- Integration: 3 scenarios (see test-design.md)
-- Coverage target: >85%
-
-### 3. Integration Points
-- gRPC: Use existing client from src/api/grpc/client
-- Cache: Invalidate firmware:* keys after update
-- Events: Publish firmware-update-started event
-
-### 4. Success Criteria
-- [ ] Tests passing with >85% coverage
-- [ ] Handles all 5 error cases gracefully
-- [ ] Cache invalidation working
-- [ ] Logs contain: minerId, version, status
-
-Questions? Comment here.
+What would you like to try first?`
+      }
+    }
+  ];
+}
 ```
 
 ---
 
-## 📊 Measuring Claude's Effectiveness
+## 🔌 gRPC Client Patterns
 
-### Metrics That Matter
+### Connection Management
 
-| Metric | Target | Notes |
-|--------|--------|-------|
-| **Design → Implementation time** | < 1 week | Includes review cycle |
-| **Code review turnaround** | < 24 hours | Quality feedback |
-| **Bug catch rate** | > 80% | Vs. traditional review |
-| **Architecture consistency** | 100% | Patterns followed across codebase |
-| **Documentation completeness** | 100% | All decisions documented |
+**Pattern: Connection Pooling**
+```typescript
+// src/api/grpc/pool.ts
+export class GrpcConnectionPool {
+  private connections: Map<string, MinerServiceClient> = new Map();
+  private readonly maxConnections = 100;
 
-### Feedback Loop
+  async getConnection(minerId: string): Promise<MinerServiceClient> {
+    if (!this.connections.has(minerId)) {
+      if (this.connections.size >= this.maxConnections) {
+        this.evictOldest();
+      }
 
-**After each major Claude engagement:**
+      const miner = await this.getMinerConfig(minerId);
+      const client = new MinerServiceClient(
+        `${miner.host}:${miner.port}`,
+        grpc.credentials.createInsecure(), // Or TLS credentials
+        {
+          "grpc.keepalive_time_ms": 30000,
+          "grpc.keepalive_timeout_ms": 10000
+        }
+      );
 
-1. Builder/Validator provides feedback: "Design was clear"
-2. Track whether design actually implemented as-is
-3. Identify improvements for next time
-4. Update this document with lessons learned
+      this.connections.set(minerId, client);
+    }
+
+    return this.connections.get(minerId)!;
+  }
+}
+```
+
+### Retry Logic
+
+**Pattern: Exponential Backoff**
+```typescript
+// src/api/grpc/retry.ts
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number;
+    initialDelay?: number;
+    maxDelay?: number;
+    backoffFactor?: number;
+  } = {}
+): Promise<T> {
+  const {
+    maxRetries = 3,
+    initialDelay = 1000,
+    maxDelay = 30000,
+    backoffFactor = 2
+  } = options;
+
+  let lastError: Error;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+
+      if (attempt < maxRetries) {
+        const delay = Math.min(
+          initialDelay * Math.pow(backoffFactor, attempt),
+          maxDelay
+        );
+        await sleep(delay);
+      }
+    }
+  }
+
+  throw new MCPError({
+    code: "GRPC_RETRY_EXHAUSTED",
+    message: `Failed after ${maxRetries} retries`,
+    cause: lastError
+  });
+}
+```
+
+### Stream Handling
+
+**Pattern: Real-Time Status Updates**
+```typescript
+// src/api/grpc/streaming.ts
+export class MinerStatusStream {
+  async streamMinerStatus(minerId: string): Promise<AsyncIterableIterator<MinerStatus>> {
+    const client = await this.pool.getConnection(minerId);
+
+    const stream = client.streamStatus({ minerId });
+
+    return {
+      [Symbol.asyncIterator]() {
+        return {
+          async next() {
+            return new Promise((resolve, reject) => {
+              stream.on("data", (status: MinerStatus) => {
+                resolve({ value: status, done: false });
+              });
+              stream.on("end", () => {
+                resolve({ value: undefined, done: true });
+              });
+              stream.on("error", reject);
+            });
+          }
+        };
+      }
+    };
+  }
+}
+
+// Usage in MCP tool
+@tool({ name: "subscribe_miner_status" })
+async subscribeMinerStatus(params: { minerId: string }) {
+  const stream = await this.grpc.streamMinerStatus(params.minerId);
+
+  // Publish to Redis pub/sub for real-time updates
+  for await (const status of stream) {
+    await this.redis.publish(`miner:${params.minerId}:status`, JSON.stringify(status));
+  }
+}
+```
 
 ---
 
-## 🚀 Advanced Claude Workflows
+## 💾 Redis Caching Strategies
 
-### Workflow: Full Feature Design-to-Deploy
+### Cache Invalidation Patterns
 
-**Scope:** Simple feature from concept to production
+**Pattern 1: Time-Based TTL**
+```typescript
+// For data that changes slowly
+async getFleetMetrics(): Promise<FleetMetrics> {
+  const key = "cache:fleet:metrics";
+  const ttl = 30; // 30 seconds
 
-**Steps:**
+  const cached = await this.redis.get(key);
+  if (cached) return JSON.parse(cached);
 
-1. **Claude: Architecture (3h)**
-   - Design data model, API, integration points
-   - Output: Design doc + implementation guide
+  const metrics = await this.computeFleetMetrics();
+  await this.redis.setex(key, ttl, JSON.stringify(metrics));
 
-2. **Builder: Implementation (1d)**
-   - Code from design
-   - Unit + integration tests
-   - Output: PR with tests passing
+  return metrics;
+}
+```
 
-3. **Claude: Code Review (3h)**
-   - Review against AGENTS.md standards
-   - Provide improvement suggestions
-   - Output: PR comments
+**Pattern 2: Event-Based Invalidation**
+```typescript
+// Invalidate when data changes
+async updateMinerConfig(minerId: string, config: MinerConfig) {
+  await this.grpc.updateConfig(minerId, config);
 
-4. **Builder: Revisions (4h)**
-   - Address Claude feedback
-   - Update tests if needed
-   - Merge to develop
+  // Invalidate all caches related to this miner
+  await this.redis.del(`cache:miner:${minerId}:config`);
+  await this.redis.del(`cache:miner:${minerId}:status`);
+  await this.redis.del("cache:fleet:summary"); // Fleet summary includes this miner
+}
+```
 
-5. **DevOps: E2E + Deploy (3h)**
-   - E2E test in staging
-   - Deploy to production
-   - Monitor metrics
-   - Output: Deployment report
+**Pattern 3: Cache-Aside with Write-Through**
+```typescript
+// Read: Cache-aside
+async getMinerStatus(minerId: string): Promise<MinerStatus> {
+  const key = `cache:miner:${minerId}:status`;
 
-**Total time: 1.5 days (parallelizable)**
+  const cached = await this.redis.get(key);
+  if (cached) return JSON.parse(cached);
 
-### Workflow: Emergency Bug Analysis
+  const status = await this.grpc.getStatus(minerId);
+  await this.redis.setex(key, 10, JSON.stringify(status));
 
-**Scenario:** Production bug causing data inconsistency
+  return status;
+}
 
-**Claude's role:**
+// Write: Write-through
+async setMinerStatus(minerId: string, status: MinerStatus) {
+  // Update source
+  await this.db.updateMinerStatus(minerId, status);
 
-1. **Gather context:** Logs, error traces, affected code
-2. **Root cause analysis:** Trace through system
-3. **Impact assessment:** How many users affected?
-4. **Propose hotfixes:** Multiple options
-5. **Risk assessment:** Which fix to deploy first?
-6. **Validation plan:** How to prevent recurrence
+  // Update cache
+  const key = `cache:miner:${minerId}:status`;
+  await this.redis.setex(key, 10, JSON.stringify(status));
+}
+```
 
-**Output:** Debugging report with recommendations
+### Pub/Sub for Real-Time Updates
 
-**Handoff:** Builder implements hotfix, DevOps deploys
+```typescript
+// Publisher (from gRPC stream or webhook)
+async publishMinerEvent(minerId: string, event: MinerEvent) {
+  await this.redis.publish(`events:miner:${minerId}`, JSON.stringify(event));
+  await this.redis.publish("events:fleet", JSON.stringify({ minerId, event }));
+}
+
+// Subscriber (in MCP server for real-time tool updates)
+async subscribeToMinerEvents() {
+  const subscriber = this.redis.duplicate();
+
+  await subscriber.subscribe("events:fleet");
+
+  subscriber.on("message", (channel, message) => {
+    const { minerId, event } = JSON.parse(message);
+    this.handleMinerEvent(minerId, event);
+  });
+}
+```
 
 ---
 
-## 📚 Reference Documents
+## 🧪 Testing Strategies
 
-All foundational standards are in **[AGENTS.md](./AGENTS.md)**:
-- Code editing standards
-- Testing philosophy  
-- Security policies
-- Git workflow
-- Tool permissions
+### Unit Tests: Tools, Resources, Prompts
 
-Claude-specific workflows defined in this document.
+```typescript
+// tests/unit/tools/update-firmware.test.ts
+describe("updateMinerFirmware tool", () => {
+  let mcpServer: MCPServer;
+  let mockGrpc: jest.Mocked<GrpcClient>;
+  let mockRedis: jest.Mocked<Redis>;
+
+  beforeEach(() => {
+    mockGrpc = createMockGrpcClient();
+    mockRedis = createMockRedis();
+    mcpServer = new MCPServer({ grpc: mockGrpc, redis: mockRedis });
+  });
+
+  it("should start firmware update job", async () => {
+    const result = await mcpServer.callTool("update_miner_firmware", {
+      minerIds: ["miner-1"],
+      version: "2.0.1"
+    });
+
+    expect(result.jobId).toBeDefined();
+    expect(result.status).toBe("pending");
+    expect(mockGrpc.updateFirmware).toHaveBeenCalledWith("miner-1", "2.0.1");
+  });
+
+  it("should handle batch updates", async () => {
+    const result = await mcpServer.callTool("update_miner_firmware", {
+      minerIds: ["miner-1", "miner-2", "miner-3"],
+      version: "2.0.1"
+    });
+
+    expect(result.total).toBe(3);
+    expect(mockGrpc.updateFirmware).toHaveBeenCalledTimes(3);
+  });
+});
+```
+
+### Integration Tests: gRPC + Redis
+
+```typescript
+// tests/integration/grpc-cache.test.ts
+describe("gRPC + Redis integration", () => {
+  let grpcClient: GrpcClient;
+  let redis: Redis;
+
+  beforeAll(async () => {
+    // Use real Redis (test container)
+    redis = new Redis(process.env.REDIS_URL);
+    // Use mock gRPC (or test miner simulator)
+    grpcClient = createMockGrpcClient();
+  });
+
+  it("should cache miner status for 10 seconds", async () => {
+    const status1 = await getMinerStatusWithCache("miner-1");
+    const status2 = await getMinerStatusWithCache("miner-1");
+
+    expect(status1).toEqual(status2);
+    expect(grpcClient.getStatus).toHaveBeenCalledTimes(1); // Only called once
+
+    await sleep(11000); // Wait for cache to expire
+
+    const status3 = await getMinerStatusWithCache("miner-1");
+    expect(grpcClient.getStatus).toHaveBeenCalledTimes(2); // Called again
+  });
+});
+```
+
+### E2E Tests: Full MCP Server Workflow
+
+```typescript
+// tests/e2e/mcp-server.test.ts
+describe("MCP Server E2E", () => {
+  let mcpClient: MCPClient;
+
+  beforeAll(async () => {
+    // Start actual MCP server
+    mcpClient = await startMCPServerForTesting();
+  });
+
+  it("should complete full firmware update workflow", async () => {
+    // 1. List miners
+    const miners = await mcpClient.callTool("list_miners", {});
+    expect(miners.miners.length).toBeGreaterThan(0);
+
+    // 2. Start firmware update
+    const updateResult = await mcpClient.callTool("update_miner_firmware", {
+      minerIds: [miners.miners[0].id],
+      version: "2.0.1"
+    });
+    expect(updateResult.jobId).toBeDefined();
+
+    // 3. Poll job status until complete
+    let jobStatus;
+    do {
+      await sleep(5000);
+      jobStatus = await mcpClient.callTool("check_job_status", {
+        jobId: updateResult.jobId
+      });
+    } while (jobStatus.status === "running");
+
+    expect(jobStatus.status).toBe("completed");
+    expect(jobStatus.errors).toHaveLength(0);
+  });
+});
+```
 
 ---
 
-**This document is maintained by: Architecture Team**  
-**Last updated: December 2025**  
-**Review frequency: Quarterly or after major workflow changes**
-Import command and agent standards from docs/claude/
+## 📚 Skills Reference
+
+### Available Skills
+
+#### 1. braiins-os (.claude/skills/braiins-os/)
+**Purpose:** Braiins OS API, feeds, and documentation reference
+**When to use:** Need Braiins OS API details, configuration options, or troubleshooting known issues
+**Contents:**
+- BOS+ API documentation (v1.8.0)
+- Braiins OS Feeds structure
+- Official Braiins Academy guides (limited - SPA rendering limitation)
+
+**Example usage:**
+```
+"For details on the Braiins OS gRPC API endpoints, see .claude/skills/braiins-os/references/bos-plus-api-README.md"
+```
+
+#### 2. mcp-builder (docs/claude/skills-templates/mcp-builder/)
+**Purpose:** General MCP server development guide (Python + TypeScript)
+**When to use:** Building new MCP tools, resources, or prompts
+**Contents:**
+- 4-phase MCP development workflow
+- Agent-centric design principles
+- Input/output optimization patterns
+- Evaluation harness creation
+
+**Note:** This is a generic guide. For Braiins OS-specific patterns, create a `mcp-server-dev` skill based on this template.
+
+### Planned Skills
+
+#### mcp-server-dev (To be created)
+**Purpose:** Braiins OS-specific MCP server development patterns
+**Contents:**
+- Mining operations workflow patterns
+- Firmware update state machine
+- Fleet management tools design
+- gRPC + Redis integration patterns
+
+#### grpc-client-dev (To be created)
+**Purpose:** gRPC client patterns for Braiins OS miners
+**Contents:**
+- Connection pooling implementation
+- Retry strategies for mining operations
+- Stream handling for real-time updates
+- Error handling specific to miners
+
+#### redis-caching-patterns (To be created)
+**Purpose:** Redis caching strategies for MCP server
+**Contents:**
+- Cache invalidation patterns
+- TTL strategies for different data types
+- Pub/Sub for real-time agent updates
+- Cache warming for fleet operations
+
+---
+
+## 🛠️ Development Workflow
+
+### Starting a Development Session
+
+```bash
+# 1. Start Redis (required for caching)
+docker-compose up redis -d
+
+# 2. Build TypeScript
+npm run build
+
+# 3. Run tests
+npm test
+
+# 4. Start MCP server in development mode
+npm run dev
+```
+
+### Testing MCP Tools
+
+**Manual Testing:**
+```bash
+# Use MCP inspector (if available)
+mcp-inspector --server ./dist/index.js
+
+# Or use Claude Code with stdio transport
+# Configure in Claude settings:
+{
+  "mcpServers": {
+    "braiins-os": {
+      "command": "node",
+      "args": ["dist/index.js"],
+      "env": {
+        "NODE_ENV": "development"
+      }
+    }
+  }
+}
+```
+
+**Automated Testing:**
+```bash
+# Unit tests
+npm run test:unit
+
+# Integration tests (requires Redis)
+npm run test:integration
+
+# E2E tests (requires test miner or simulator)
+npm run test:e2e
+
+# All tests with coverage
+npm test
+```
+
+---
+
+## 🚀 Deployment Considerations
+
+### Environment Variables
+
+Required:
+```env
+NODE_ENV=production
+REDIS_URL=redis://localhost:6379
+GRPC_TIMEOUT_MS=30000
+```
+
+Optional:
+```env
+LOG_LEVEL=info
+CACHE_TTL_DEFAULT=30
+MAX_GRPC_CONNECTIONS=100
+```
+
+### Docker Deployment
+
+```dockerfile
+# Multi-stage build
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM node:20-alpine
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package*.json ./
+RUN npm ci --production
+CMD ["node", "dist/index.js"]
+```
+
+---
+
+## 🤝 Collaboration with Other Agents
+
+### Architect Agent
+- **Use for:** System design decisions, API design, architectural patterns
+- **Handoff:** Architect designs → Builder implements
+
+### Builder Agent
+- **Use for:** Feature implementation, bug fixes, refactoring
+- **Handoff:** Builder codes → Validator tests
+
+### Validator Agent
+- **Use for:** Testing, code review, quality assurance
+- **Handoff:** Validator approves → Scribe documents
+
+### Scribe Agent
+- **Use for:** Documentation updates, API docs, troubleshooting guides
+- **Handoff:** Scribe documents → DevOps deploys
+
+### DevOps Agent
+- **Use for:** Deployment, infrastructure, monitoring setup
+- **Handoff:** DevOps deploys → Monitor in production
+
+---
+
+## 📋 Quick Reference
+
+### Common Commands
+
+```bash
+# Development
+npm run dev                  # Start development server
+npm run build               # Build TypeScript
+npm run type-check          # TypeScript type checking
+
+# Testing
+npm test                    # Run all tests
+npm run test:unit           # Unit tests only
+npm run test:integration    # Integration tests
+npm run test:e2e            # End-to-end tests
+npm run test:coverage       # Generate coverage report
+
+# Code Quality
+npm run lint                # ESLint
+npm run lint:fix            # Auto-fix linting issues
+npm run format              # Prettier formatting
+```
+
+### File Structure
+
+```
+src/
+├── index.ts              # MCP server entry point
+├── server.ts             # Transport setup (STDIO/HTTP)
+├── mcp/
+│   ├── tools/           # MCP tools (agent-callable functions)
+│   ├── resources/       # MCP resources (structured data)
+│   └── prompts/         # MCP prompts (guided workflows)
+├── api/
+│   ├── grpc/           # gRPC client implementation
+│   │   ├── client.ts   # gRPC client
+│   │   ├── pool.ts     # Connection pooling
+│   │   └── retry.ts    # Retry logic
+│   └── rest/           # REST API endpoints
+├── cache/
+│   └── redis.ts        # Redis caching layer
+├── models/             # Data models (TypeScript interfaces)
+├── utils/              # Utility functions
+└── types/              # TypeScript type definitions
+
+tests/
+├── unit/               # Unit tests
+├── integration/        # Integration tests
+└── e2e/                # End-to-end tests
+
+.claude/
+├── commands/           # Slash commands
+├── agents/             # Agent configurations
+└── skills/             # Development skills
+    └── braiins-os/     # Braiins OS reference skill
+```
+
+---
+
+## 📞 Support & Resources
+
+### Documentation
+- [README.md](./README.md) - Project overview
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
+- [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) - Implementation roadmap
+- [.claude/AUDIT_REPORT.md](./.claude/AUDIT_REPORT.md) - Tooling audit & recommendations
+
+### External Resources
+- [Model Context Protocol Specification](https://modelcontextprotocol.io)
+- [Braiins OS+ API](https://github.com/braiins/bos-plus-api)
+- [gRPC Node.js Guide](https://grpc.io/docs/languages/node/)
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/)
+
+---
+
+**Project Status:** ✅ Foundation Complete | 🔄 Active Development
+**Last Updated:** December 2025
+**Maintainer:** Ryno Crypto Mining Services
