@@ -36,7 +36,6 @@ export interface AppServer {
  * @returns Server instance ready to start
  */
 export async function createServer(config: AppConfig): Promise<AppServer> {
-  let mcpServices: MCPServerWithServices;
   let expressApp: Application | null = null;
   let redisClient: RedisClient | null = null;
   let httpServer: ReturnType<Application['listen']> | null = null;
@@ -58,7 +57,7 @@ export async function createServer(config: AppConfig): Promise<AppServer> {
   }
 
   // Create MCP server with dependencies
-  mcpServices = await createMCPServer({
+  const mcpServices = await createMCPServer({
     redis: redisClient,
     config,
   });
@@ -76,6 +75,7 @@ export async function createServer(config: AppConfig): Promise<AppServer> {
 
         // Security middleware
         expressApp.use(helmet());
+        // eslint-disable-next-line import/no-named-as-default-member
         expressApp.use(express.json());
 
         // Health check endpoint
@@ -91,16 +91,18 @@ export async function createServer(config: AppConfig): Promise<AppServer> {
         });
 
         // Readiness check
-        expressApp.get('/ready', async (_req, res) => {
-          try {
-            // Check Redis if enabled
-            if (redisClient) {
-              await redisClient.set('health:check', 'ok', 10);
+        expressApp.get('/ready', (_req, res) => {
+          void (async () => {
+            try {
+              // Check Redis if enabled
+              if (redisClient) {
+                await redisClient.set('health:check', 'ok', 10);
+              }
+              res.json({ ready: true });
+            } catch {
+              res.status(503).json({ ready: false });
             }
-            res.json({ ready: true });
-          } catch {
-            res.status(503).json({ ready: false });
-          }
+          })();
         });
 
         // Setup REST API routes

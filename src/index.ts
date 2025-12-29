@@ -20,7 +20,7 @@ async function main(): Promise<void> {
     const config = loadConfig();
 
     logger.info('Starting braiins-os-mcp-server', {
-      version: process.env.npm_package_version || '0.1.0',
+      version: process.env.npm_package_version ?? '0.1.0',
       nodeVersion: process.version,
       environment: config.environment,
     });
@@ -36,8 +36,8 @@ async function main(): Promise<void> {
       process.exit(0);
     };
 
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => void shutdown('SIGTERM'));
+    process.on('SIGINT', () => void shutdown('SIGINT'));
 
     await server.start();
 
@@ -57,4 +57,4 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+void main();

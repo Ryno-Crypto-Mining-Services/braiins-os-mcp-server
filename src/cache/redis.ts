@@ -170,7 +170,7 @@ export async function createRedisClient(config: RedisConfig): Promise<RedisClien
       if (keys.length === 0) {
         return 0;
       }
-      return await client.del(...keys);
+      return client.del(...keys);
     },
 
     async exists(key: string): Promise<boolean> {
@@ -184,12 +184,12 @@ export async function createRedisClient(config: RedisConfig): Promise<RedisClien
     },
 
     async incr(key: string): Promise<number> {
-      return await client.incr(key);
+      return client.incr(key);
     },
 
     async publish(channel: string, message: unknown): Promise<number> {
       const serialized = typeof message === 'string' ? message : JSON.stringify(message);
-      return await client.publish(channel, serialized);
+      return client.publish(channel, serialized);
     },
 
     async subscribe(channel: string, callback: (message: unknown) => void): Promise<void> {

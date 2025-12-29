@@ -83,7 +83,7 @@ export function setupRoutes(app: Application, deps: RouteDependencies): RouteRep
    * GET /api/v1/firmware
    * List available firmware versions.
    */
-  app.get('/api/v1/firmware', async (_req: Request, res: Response, next: NextFunction) => {
+  app.get('/api/v1/firmware', (_req: Request, res: Response, next: NextFunction) => {
     try {
       // TODO: Implement firmware listing (Week 5)
       routeLogger.info('List firmware versions');
@@ -105,7 +105,7 @@ export function setupRoutes(app: Application, deps: RouteDependencies): RouteRep
    * POST /api/v1/firmware/update
    * Start a firmware update for multiple miners.
    */
-  app.post('/api/v1/firmware/update', async (req: Request, res: Response, next: NextFunction) => {
+  app.post('/api/v1/firmware/update', (req: Request, res: Response, next: NextFunction) => {
     try {
       const { minerIds, version } = req.body as { minerIds?: string[]; version?: string };
 
@@ -113,7 +113,7 @@ export function setupRoutes(app: Application, deps: RouteDependencies): RouteRep
         throw new ValidationError('minerIds array is required');
       }
 
-      if (!version) {
+      if (version === null || version === undefined || version === '') {
         throw new ValidationError('version is required');
       }
 
@@ -144,11 +144,11 @@ export function setupRoutes(app: Application, deps: RouteDependencies): RouteRep
    * GET /api/v1/tasks/:id
    * Get task status and progress.
    */
-  app.get('/api/v1/tasks/:id', async (req: Request, res: Response, next: NextFunction) => {
+  app.get('/api/v1/tasks/:id', (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
 
-      if (!id) {
+      if (id === null || id === undefined || id === '') {
         throw new ValidationError('Task ID is required');
       }
 
