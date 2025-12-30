@@ -384,6 +384,195 @@ const grpc = GrpcClientFactory.create(config);
 - Easy to swap implementations
 - Configuration-driven behavior
 
+### 6. Background Job Pattern (Async Operations)
+
+```typescript
+// Pattern for long-running operations (5+ minutes)
+interface BackgroundJob {
+  jobId: string;
+  type: 'firmware_update' | 'performance_baseline';
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress: {
+    total: number;
+    completed: number;
+    failed: number;
+  };
+  metadata: Record<string, unknown>;
+  startedAt: string;
+  completedAt?: string;
+}
+
+// Tool returns immediately with job ID
+async function runPerformanceBaseline(minerId: string): Promise<{ jobId: string }> {
+  const job = await jobService.createJob('performance_baseline', 3, {
+    minerId,
+    modes: ['low', 'medium', 'high'],
+  });
+
+  // Process in background (non-blocking)
+  processBaselineTest(job.jobId, context).catch((error) => {
+    jobService.failJob(job.jobId, error.message);
+  });
+
+  // Return immediately for agent polling
+  return { jobId: job.jobId, status: 'pending' };
+}
+
+// Companion status check tool
+async function checkBaselineJobStatus(jobId: string): Promise<BackgroundJob> {
+  return jobService.getJob(jobId);
+}
+```
+
+**Benefits:**
+- Non-blocking for long operations (firmware updates, performance tests)
+- Agent can poll for progress (check every 30-60 seconds)
+- Job survives server restarts (stored in Redis/database)
+- Centralizes async operation management
+
+**Used in:**
+- `run_performance_baseline` (5-15 minute operation)
+- `update_miner_firmware` (10-30 minute batch operation)
+
+### 7. Safety Validation Pattern (Prevent Damage)
+
+```typescript
+// Hardware safety validation before applying changes
+const SAFETY_MIN_FAN_SPEED = 30; // Prevent overheating
+const WARNING_FAN_SPEED = 40; // Warning zone
+
+function validateSafety(
+  mode: 'auto' | 'manual',
+  fanSpeed?: number
+): { valid: boolean; error?: string; warning?: string } {
+  if (mode === 'manual') {
+    if (fanSpeed < SAFETY_MIN_FAN_SPEED) {
+      return {
+        valid: false,
+        error: `Fan speed must be at least ${SAFETY_MIN_FAN_SPEED}% to prevent overheating`,
+      };
+    }
+    if (fanSpeed < WARNING_FAN_SPEED) {
+      return {
+        valid: true,
+        warning: `Fan speed ${fanSpeed}% is low. Monitor temperatures closely.`,
+      };
+    }
+  }
+  return { valid: true };
+}
+```
+
+**Benefits:**
+- Prevents hardware damage (overheating, power overload)
+- Multi-tier validation (reject, warn, accept)
+- Bypass option for expert users (`validate: false`)
+- Explicit constants for safety thresholds
+
+**Used in:**
+- `configure_fan_control` (30% minimum fan speed)
+- `configure_power_schedule` (0-10000W power limit validation)
+- `configure_network` (connectivity validation before applying changes)
+
+### 8. Automatic Rollback Pattern (Network Safety)
+
+```typescript
+// Network changes with automatic rollback on failure
+async function configureNetwork(
+  minerId: string,
+  config: NetworkConfig
+): Promise<NetworkChangeResult> {
+  // Save current config for rollback
+  const previousConfig = await grpc.getNetworkConfig(minerId);
+
+  try {
+    // Apply new configuration
+    await grpc.setNetworkConfig(minerId, config);
+
+    // Validate connectivity with new config
+    if (config.validateConnectivity) {
+      const reachable = await pingMiner(minerId, { timeout: 5000 });
+
+      if (!reachable && config.rollbackOnFailure) {
+        // Automatic rollback
+        await grpc.setNetworkConfig(minerId, previousConfig);
+        return {
+          success: false,
+          rolledBack: true,
+          error: 'Connectivity validation failed, reverted to previous config',
+        };
+      }
+    }
+
+    return { success: true, applied: config };
+  } catch (error) {
+    // Rollback on any error
+    if (config.rollbackOnFailure) {
+      await grpc.setNetworkConfig(minerId, previousConfig);
+      return { success: false, rolledBack: true, error: error.message };
+    }
+    throw error;
+  }
+}
+```
+
+**Benefits:**
+- Prevents network lockout (can't reach miner after config change)
+- Graceful degradation (revert to known-good state)
+- User control (`rollbackOnFailure` flag)
+- Comprehensive error reporting
+
+**Used in:**
+- `configure_network` (IP/DNS/gateway changes)
+
+### 9. Cron Scheduling Pattern (Time-Based Automation)
+
+```typescript
+// Cron expression validation and scheduling
+const CRON_REGEX =
+  /^(\*|([0-9]|[1-5][0-9])|\*\/([0-9]|[1-5][0-9])) (\*|([0-9]|1[0-9]|2[0-3])|\*\/([0-9]|1[0-9]|2[0-3])) (\*|([1-9]|[12][0-9]|3[01])|\*\/([1-9]|[12][0-9]|3[01])) (\*|([1-9]|1[0-2])|\*\/([1-9]|1[0-2])) (\*|[0-6]|\*\/[0-6])$/;
+
+interface PowerSchedule {
+  cron: string; // 5-field cron: minute hour day month weekday
+  powerLimit: number; // Watts
+  timezone: string; // IANA timezone (e.g., 'America/New_York')
+}
+
+function validateCronExpression(cron: string): boolean {
+  return CRON_REGEX.test(cron);
+}
+
+function validateTimezone(tz: string): boolean {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Calculate next execution time (placeholder - use cron-parser in production)
+function calculateNextExecution(): string {
+  const now = new Date();
+  const nextRun = new Date(now.getTime() + 60000); // Add 1 minute
+  return nextRun.toISOString();
+}
+```
+
+**Benefits:**
+- Flexible scheduling (daily, weekly, monthly, custom intervals)
+- Timezone support (handles DST automatically)
+- Multiple schedules per miner (up to 10)
+- Standard cron syntax (familiar to operators)
+
+**Used in:**
+- `configure_power_schedule` (automated power management)
+
+**Examples:**
+- `0 2 * * *` - 2 AM daily (reduce power during low-rate periods)
+- `30 14 * * 5` - 2:30 PM every Friday (maintenance window)
+- `*/15 * * * *` - Every 15 minutes (dynamic load balancing)
+
 ---
 
 ## API Design
@@ -488,7 +677,9 @@ const prompts: MCPPrompt[] = [
 
 ### Implemented MCP Components (December 2025)
 
-**16 MCP Tools:**
+**22 MCP Tools:**
+
+**Core Management:**
 1. `register_miner` - Register new miner with credentials
 2. `unregister_miner` - Remove miner from management
 3. `list_miners` - List all miners with filters/pagination
@@ -498,13 +689,25 @@ const prompts: MCPPrompt[] = [
 7. `get_fleet_status` - Aggregated fleet metrics
 8. `ping_miner` - Test miner connectivity
 9. `reboot_miner` - Graceful miner reboot
-10. `set_power_target` - Configure power consumption limit
-11. `set_hashrate_target` - Configure hashrate target
-12. `update_miner_firmware` - Background firmware updates with job tracking
-13. `check_firmware_job_status` - Monitor firmware update progress
-14. `check_job_status` - Generic job status queries
-15. `update_pool_config` - Mining pool configuration
-16. `factory_reset` - Miner factory reset with confirmation
+10. `factory_reset` - Miner factory reset with confirmation
+
+**Performance Optimization:**
+11. `set_power_target` - Configure power consumption limit
+12. `set_hashrate_target` - Configure hashrate target
+13. `configure_autotuning` - Auto-optimize for power/hashrate/efficiency
+14. `configure_fan_control` - Fan speed control with safety validation
+15. `configure_power_schedule` - Cron-based power scheduling with timezone support
+16. `run_performance_baseline` - Diagnostic testing across power modes (background job)
+17. `check_baseline_job_status` - Monitor baseline test progress
+
+**Network & Configuration:**
+18. `configure_network` - Network config with connectivity validation and rollback
+19. `update_pool_config` - Mining pool configuration
+
+**Firmware & Jobs:**
+20. `update_miner_firmware` - Background firmware updates with job tracking
+21. `check_firmware_job_status` - Monitor firmware update progress
+22. `check_job_status` - Generic job status queries
 
 **5 MCP Resources:**
 1. `braiins:///fleet/summary` - Fleet metrics (cached 30s)
@@ -520,11 +723,13 @@ const prompts: MCPPrompt[] = [
 
 **Architecture Highlights:**
 - Agent-centric design (concise responses by default, detailed on request)
-- Background job tracking for long operations (firmware updates)
+- Background job tracking for long operations (firmware updates, performance baselines)
 - Actionable error messages with remediation suggestions
-- Batch operation support (update multiple miners simultaneously)
+- Batch operation support (update multiple miners simultaneously, max 100)
+- Safety validation (fan speed minimums, network rollback, cron validation)
+- Automated scheduling (cron-based power management with timezone support)
 - Caching layer reduces miner load (TTL: 10-60s per resource type)
-- Comprehensive test coverage (139 tests, 13 test suites)
+- Comprehensive test coverage (175 tests passing, 11 test suites)
 
 ---
 

@@ -8,7 +8,9 @@
 
 import { checkJobStatusTool } from './check-job-status';
 import { configureAutotuningTool } from './configure-autotuning';
+import { configureFanControlTool } from './configure-fan-control';
 import { configureNetworkTool } from './configure-network';
+import { configurePowerScheduleTool } from './configure-power-schedule';
 import { factoryResetTool } from './factory-reset';
 import { getFleetStatusTool } from './get-fleet-status';
 import { getMinerInfoTool } from './get-miner-info';
@@ -18,6 +20,7 @@ import { listMinersTool } from './list-miners';
 import { pingMinerTool } from './ping-miner';
 import { rebootMinerTool } from './reboot-miner';
 import { registerMinerTool } from './register-miner';
+import { checkBaselineJobStatusTool, runPerformanceBaselineTool } from './run-performance-baseline';
 import { setHashrateTargetTool } from './set-hashrate-target';
 import { setPowerTargetTool } from './set-power-target';
 import type { MCPToolDefinition } from './types';
@@ -42,9 +45,13 @@ export const ALL_TOOLS: MCPToolDefinition[] = [
   setPowerTargetTool,
   setHashrateTargetTool,
   configureAutotuningTool,
+  configureFanControlTool,
   configureNetworkTool,
+  configurePowerScheduleTool,
   updateMinerFirmwareTool,
   checkFirmwareJobStatusTool,
+  runPerformanceBaselineTool,
+  checkBaselineJobStatusTool,
   checkJobStatusTool,
   updatePoolConfigTool,
   factoryResetTool,

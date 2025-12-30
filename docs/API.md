@@ -577,6 +577,411 @@ The Braiins OS MCP Server provides AI agents with safe, structured access to Bra
 
 ---
 
+### 17. configure_autotuning
+
+**Description**: Configure autotuning mode for one or more miners to optimize performance based on power, hashrate, or efficiency goals.
+
+**Input Schema**:
+```typescript
+{
+  minerIds: string[];            // Array of miner IDs (max: 100)
+  mode: 'power' | 'hashrate' | 'efficiency';  // Optimization mode
+  targetPower?: number;          // Target power in watts (required for 'power' mode)
+  targetHashrate?: number;       // Target hashrate in TH/s (required for 'hashrate' mode)
+  validate?: boolean;            // Validate compatibility with miner model (default: true)
+}
+```
+
+**Autotuning Modes**:
+- **power**: Minimize power consumption while maintaining acceptable hashrate
+- **hashrate**: Maximize hashrate output regardless of power consumption
+- **efficiency**: Auto-balance between power efficiency and hashrate (no target required)
+
+**Returns**:
+```typescript
+{
+  success: number;               // Number of miners configured successfully
+  failed: number;
+  results: Array<{
+    minerId: string;
+    status: 'completed' | 'failed';
+    appliedMode?: string;
+    appliedTarget?: number;
+    error?: string;
+  }>;
+}
+```
+
+**Example Usage**:
+```json
+{
+  "minerIds": ["miner-001", "miner-002"],
+  "mode": "efficiency"
+}
+```
+
+```json
+{
+  "minerIds": ["miner-003"],
+  "mode": "power",
+  "targetPower": 2500
+}
+```
+
+**Errors**:
+- `TARGET_REQUIRED`: targetPower required when mode is 'power'
+- `TARGET_REQUIRED`: targetHashrate required when mode is 'hashrate'
+- `BATCH_LIMIT_EXCEEDED`: Maximum 100 miners per batch
+
+---
+
+### 18. configure_fan_control
+
+**Description**: Configure fan control mode (auto or manual) for one or more miners with safety validation to prevent overheating.
+
+**Input Schema**:
+```typescript
+{
+  minerIds: string[];            // Array of miner IDs (1-100)
+  mode: 'auto' | 'manual';       // Fan control mode
+  fanSpeed?: number;             // Fixed fan speed % (required for manual mode, 30-100)
+  minFanSpeed?: number;          // Min fan speed % for auto mode (30-100, default: 40)
+  maxFanSpeed?: number;          // Max fan speed % for auto mode (30-100, default: 100)
+  validate?: boolean;            // Enable safety validation (default: true)
+  detailLevel?: 'concise' | 'verbose';  // Response detail (default: 'concise')
+}
+```
+
+**Safety Validation**:
+- **Minimum Fan Speed**: 30% enforced to prevent overheating
+- **Warning Zone**: 30-40% generates warnings
+- **Safe Range**: 40%+ recommended for optimal cooling
+- **Bypass**: Set `validate: false` to bypass safety checks (not recommended)
+
+**Returns (Concise)**:
+```typescript
+{
+  success: boolean;
+  successfulMiners: number;
+  failedMiners: number;
+  warnings: string[];            // Safety warnings (e.g., low fan speeds)
+}
+```
+
+**Returns (Verbose)**:
+```typescript
+{
+  success: boolean;
+  summary: {
+    total: number;
+    successful: number;
+    failed: number;
+  };
+  warnings: string[];
+  results: Array<{
+    minerId: string;
+    success: boolean;
+    previousMode?: string;
+    newMode?: string;
+    error?: string;
+  }>;
+}
+```
+
+**Example Usage**:
+```json
+{
+  "minerIds": ["miner-001"],
+  "mode": "manual",
+  "fanSpeed": 70
+}
+```
+
+```json
+{
+  "minerIds": ["miner-002", "miner-003"],
+  "mode": "auto",
+  "minFanSpeed": 40,
+  "maxFanSpeed": 80
+}
+```
+
+**Errors**:
+- `FAN_SPEED_REQUIRED`: fanSpeed required for manual mode
+- `FAN_SPEED_TOO_LOW`: Fan speed below 30% safety minimum
+- `INVALID_RANGE`: minFanSpeed must be less than maxFanSpeed
+
+---
+
+### 19. configure_power_schedule
+
+**Description**: Configure automated power management schedules using cron expressions with timezone support. Each miner can have up to 10 schedules.
+
+**Input Schema**:
+```typescript
+{
+  minerIds: string[];            // Array of miner IDs (1-100)
+  schedules: Array<{
+    cron: string;                // 5-field cron expression (minute hour day month weekday)
+    powerLimit: number;          // Power limit in watts (0-10000)
+    mode: 'enable' | 'disable';  // Enable or disable schedule
+  }>;                            // 1-10 schedules per miner
+  timezone?: string;             // IANA timezone (default: 'UTC')
+  validate?: boolean;            // Validate cron and timezone (default: true)
+  detailLevel?: 'concise' | 'verbose';
+}
+```
+
+**Cron Expression Format**:
+- **Standard 5-field format**: `minute hour day month weekday`
+- **Examples**:
+  - `0 2 * * *` - 2 AM daily
+  - `30 14 * * 5` - 2:30 PM every Friday
+  - `*/15 * * * *` - Every 15 minutes
+  - `0 0 1 * *` - Midnight on 1st of every month
+
+**Returns (Concise)**:
+```typescript
+{
+  success: boolean;
+  successfulMiners: number;
+  failedMiners: number;
+  schedules: Array<{
+    cron: string;
+    powerLimit: number;
+    nextExecution: string;       // ISO 8601 timestamp
+  }>;
+}
+```
+
+**Example Usage**:
+```json
+{
+  "minerIds": ["miner-001"],
+  "schedules": [
+    {
+      "cron": "0 2 * * *",
+      "powerLimit": 3000,
+      "mode": "enable"
+    },
+    {
+      "cron": "0 22 * * *",
+      "powerLimit": 2500,
+      "mode": "enable"
+    }
+  ],
+  "timezone": "America/New_York"
+}
+```
+
+**Validations**:
+- Cron expression must follow 5-field format
+- Power limit: 0-10000 watts
+- Maximum 10 schedules per miner
+- Maximum 100 miners per batch
+- Timezone must be valid IANA timezone
+
+**Errors**:
+- `INVALID_CRON`: Cron expression format invalid
+- `INVALID_TIMEZONE`: Timezone not recognized
+- `SCHEDULE_LIMIT_EXCEEDED`: More than 10 schedules per miner
+- `POWER_LIMIT_INVALID`: Power limit outside 0-10000 watts range
+
+---
+
+### 20. configure_network
+
+**Description**: Update network configuration (IP address, DNS, gateway) for a miner with connectivity validation and automatic rollback on failure.
+
+**Input Schema**:
+```typescript
+{
+  minerId: string;               // Single miner ID (network changes are per-miner)
+  ipAddress: string;             // New IP address in CIDR notation (e.g., "192.168.1.100/24")
+  gateway: string;               // Gateway IP address
+  dnsServers: string[];          // Array of DNS server IPs (1-3 servers)
+  hostname?: string;             // Optional hostname
+  validateConnectivity?: boolean; // Test connection after change (default: true)
+  rollbackOnFailure?: boolean;   // Auto-rollback if validation fails (default: true)
+}
+```
+
+**Returns**:
+```typescript
+{
+  success: boolean;
+  minerId: string;
+  applied: {
+    ipAddress: string;
+    gateway: string;
+    dnsServers: string[];
+    hostname?: string;
+  };
+  validation?: {
+    reachable: boolean;
+    latency?: string;
+  };
+  rolledBack?: boolean;
+  error?: string;
+}
+```
+
+**Example Usage**:
+```json
+{
+  "minerId": "miner-001",
+  "ipAddress": "192.168.1.150/24",
+  "gateway": "192.168.1.1",
+  "dnsServers": ["8.8.8.8", "8.8.4.4"],
+  "hostname": "miner-s19-001"
+}
+```
+
+**Safety Features**:
+- **Connectivity Validation**: Tests connection after applying changes
+- **Automatic Rollback**: Reverts to previous config if validation fails
+- **CIDR Notation**: Supports subnet mask in CIDR format (e.g., /24)
+- **DNS Validation**: Ensures 1-3 valid DNS server IPs
+
+**Errors**:
+- `INVALID_IP_FORMAT`: IP address format invalid
+- `INVALID_CIDR`: CIDR notation invalid (must be /1-/32)
+- `INVALID_DNS`: DNS server IP format invalid
+- `CONNECTIVITY_FAILED`: Cannot reach miner after network change
+- `ROLLBACK_FAILED`: Rollback attempt failed (manual intervention required)
+
+---
+
+### 21. run_performance_baseline
+
+**Description**: Run diagnostic performance test on a miner across different power modes (low/medium/high) to measure optimal hashrate, power consumption, and efficiency. Returns job ID for async tracking (5-15 minute operation).
+
+**Input Schema**:
+```typescript
+{
+  minerId: string;               // Single miner ID to test
+  duration?: number;             // Test duration per mode in seconds (60-3600, default: 300)
+  modes?: Array<'low' | 'medium' | 'high'>;  // Power modes to test (default: all)
+  collectMetrics?: boolean;      // Collect detailed metrics (default: true)
+  detailLevel?: 'concise' | 'verbose';
+}
+```
+
+**Power Modes Tested**:
+- **low**: ~2500W - Minimum power consumption
+- **medium**: ~3000W - Balanced performance
+- **high**: ~3500W - Maximum hashrate
+
+**Returns**:
+```typescript
+{
+  success: boolean;
+  jobId: string;                 // Job ID for status tracking
+  status: 'pending' | 'running';
+  estimatedDuration: string;     // e.g., "900s" for 3 modes × 300s
+  message: string;
+}
+```
+
+**Example Usage**:
+```json
+{
+  "minerId": "miner-001",
+  "duration": 300,
+  "modes": ["low", "medium", "high"]
+}
+```
+
+**Workflow**:
+1. Start baseline test → returns `jobId`
+2. Poll with `check_baseline_job_status` every 30-60 seconds
+3. When `status: "completed"`, retrieve optimization recommendations
+
+**Recommendations Generated**:
+- Optimal power mode for efficiency (lowest J/TH)
+- Temperature safety analysis
+- Efficiency gap between modes (% improvement potential)
+
+**Errors**:
+- `MINER_NOT_FOUND`: Miner ID not registered
+- `MINER_OFFLINE`: Miner must be online for baseline test
+- `INVALID_DURATION`: Duration must be 60-3600 seconds
+- `INVALID_MODE`: Mode must be 'low', 'medium', or 'high'
+
+---
+
+### 22. check_baseline_job_status
+
+**Description**: Check the status and results of a performance baseline test job.
+
+**Input Schema**:
+```typescript
+{
+  jobId: string;                 // Job ID from run_performance_baseline
+  detailLevel?: 'concise' | 'verbose';
+}
+```
+
+**Returns (Concise)**:
+```typescript
+{
+  success: boolean;
+  jobId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress: {
+    total: number;               // Total modes to test
+    completed: number;           // Modes completed
+    currentMode?: string;        // Currently testing mode
+  };
+}
+```
+
+**Returns (Verbose - when status: "completed")**:
+```typescript
+{
+  success: boolean;
+  jobId: string;
+  status: 'completed';
+  progress: { total: 3, completed: 3 };
+  results: {
+    baseline: {
+      hashrate: number;          // Optimal hashrate in TH/s
+      power: number;             // Optimal power in watts
+      efficiency: number;        // Best efficiency in J/TH
+      temperature: number;       // Average temp in Celsius
+    };
+    recommendations: string[];   // Array of optimization suggestions
+    detailedMetrics: Array<{
+      mode: string;
+      samples: number;
+      metrics: {
+        hashrate: number;
+        power: number;
+        efficiency: number;
+        temperature: number;
+      };
+    }>;
+  };
+  startedAt: string;             // ISO 8601 timestamp
+  completedAt: string;
+}
+```
+
+**Example Usage**:
+```json
+{
+  "jobId": "baseline-20251228-abc123",
+  "detailLevel": "verbose"
+}
+```
+
+**Polling Strategy**:
+- Poll every 30-60 seconds during test
+- Average test time: 5-15 minutes depending on modes and duration
+- Status progression: `pending` → `running` → `completed` or `failed`
+
+---
+
 ## MCP Resources
 
 ### 1. braiins:///fleet/summary
