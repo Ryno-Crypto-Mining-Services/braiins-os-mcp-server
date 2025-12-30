@@ -7,20 +7,12 @@
  */
 
 import { z } from 'zod';
-import type { JobService } from '../../services/job.service';
 import type { MCPToolDefinition, ToolArguments, ToolContext } from './types';
 
 const CheckJobStatusArgsSchema = z.object({
   jobId: z.string().min(1, 'Job ID is required'),
   detailLevel: z.enum(['concise', 'verbose']).optional().default('concise'),
 });
-
-/**
- * Extended tool context that includes job service.
- */
-interface JobToolContext extends ToolContext {
-  jobService: JobService;
-}
 
 export const checkJobStatusTool: MCPToolDefinition = {
   schema: {
@@ -46,25 +38,9 @@ export const checkJobStatusTool: MCPToolDefinition = {
   handler: async (args: ToolArguments, context: ToolContext) => {
     try {
       const validated = CheckJobStatusArgsSchema.parse(args);
-      const jobContext = context as unknown as JobToolContext;
 
-      if (!jobContext.jobService) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                success: false,
-                error: 'Job service not available',
-                suggestion: 'Job tracking is not enabled on this server',
-              }),
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      const job = await jobContext.jobService.getJob(validated.jobId);
+      // ToolContext now includes jobService via BaseContext
+      const job = await context.jobService.getJob(validated.jobId);
 
       if (!job) {
         return {

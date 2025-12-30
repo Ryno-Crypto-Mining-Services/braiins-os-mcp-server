@@ -8,16 +8,24 @@
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListResourcesRequestSchema, ListToolsRequestSchema, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  ReadResourceRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 import { createBraiinsClient, BraiinsClient } from '../api/braiins';
 import { RedisClient } from '../cache/redis';
 import { SERVER_INFO, MCP_SCHEMES } from '../config/constants';
 import type { AppConfig } from '../config/env';
+import { createJobService, JobService } from '../services/job.service';
 import { createMinerService, MinerService } from '../services/miner.service';
 import { createChildLogger } from '../utils/logger';
+import { ALL_PROMPTS, PROMPT_HANDLERS } from './prompts';
 import { ALL_RESOURCES } from './resources';
-import type { ResourceContext } from './resources/types';
-import { ALL_TOOLS, TOOL_HANDLERS, type ToolContext } from './tools';
+import { ALL_TOOLS, TOOL_HANDLERS } from './tools';
 
 const mcpLogger = createChildLogger({ module: 'mcp' });
 
@@ -36,6 +44,7 @@ export interface MCPServerWithServices {
   server: Server;
   minerService: MinerService;
   braiinsClient: BraiinsClient;
+  jobService: JobService;
 }
 
 /**
@@ -54,6 +63,16 @@ export async function createMCPServer(deps: MCPDependencies): Promise<MCPServerW
 
   // Create miner service
   const minerService = createMinerService(braiinsClient, deps.redis);
+
+  // Create job service for background task management
+  const jobService = createJobService(deps.redis);
+
+  // Create shared base context for all handlers (tools, resources, prompts)
+  const baseContext = {
+    minerService,
+    braiinsClient,
+    jobService,
+  };
 
   const server = new Server(
     {
@@ -118,19 +137,13 @@ export async function createMCPServer(deps: MCPDependencies): Promise<MCPServerW
     const { uri } = request.params;
     mcpLogger.debug('Reading resource', { uri });
 
-    // Create resource context
-    const resourceContext: ResourceContext = {
-      minerService,
-      braiinsClient,
-    };
-
     // Try to match against registered resource handlers
     for (const resource of ALL_RESOURCES) {
       // Simple pattern matching for now (can be improved with regex)
       const templatePrefix = resource.uriTemplate.split('{')[0];
       if (templatePrefix && uri.startsWith(templatePrefix)) {
         try {
-          const content = await resource.handler(uri, resourceContext);
+          const content = await resource.handler(uri, baseContext);
           return {
             contents: [content],
           };
@@ -232,14 +245,8 @@ export async function createMCPServer(deps: MCPDependencies): Promise<MCPServerW
         throw new Error(`Unknown tool: ${name}`);
       }
 
-      // Create tool context
-      const context: ToolContext = {
-        minerService,
-        braiinsClient,
-      };
-
-      // Execute tool handler
-      return await handler(args ?? {}, context);
+      // Execute tool handler with shared base context
+      return await handler(args ?? {}, baseContext);
     } catch (error) {
       mcpLogger.error('Tool execution failed', { name, error });
       return {
@@ -257,6 +264,45 @@ export async function createMCPServer(deps: MCPDependencies): Promise<MCPServerW
     }
   });
 
+  // ==================== Prompts ====================
+  // Prompts are guided workflows for agents
+
+  server.setRequestHandler(ListPromptsRequestSchema, async () => {
+    mcpLogger.debug('Listing prompts');
+
+    return {
+      prompts: ALL_PROMPTS.map((prompt) => ({
+        name: prompt.name,
+        description: prompt.description,
+        arguments: prompt.arguments,
+      })),
+    };
+  });
+
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    mcpLogger.info('Prompt requested', { name, args });
+
+    try {
+      // Lookup prompt handler from registry
+      const handler = PROMPT_HANDLERS.get(name);
+      if (!handler) {
+        throw new Error(`Unknown prompt: ${name}`);
+      }
+
+      // Execute prompt handler with shared base context
+      const messages = await handler(args ?? {}, baseContext);
+
+      return {
+        description: ALL_PROMPTS.find((p) => p.name === name)?.description ?? '',
+        messages,
+      };
+    } catch (error) {
+      mcpLogger.error('Prompt execution failed', { name, error });
+      throw error;
+    }
+  });
+
   mcpLogger.info('MCP server configured', {
     name: SERVER_INFO.name,
     version: SERVER_INFO.version,
@@ -266,5 +312,6 @@ export async function createMCPServer(deps: MCPDependencies): Promise<MCPServerW
     server,
     minerService,
     braiinsClient,
+    jobService,
   };
 }

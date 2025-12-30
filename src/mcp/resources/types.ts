@@ -6,15 +6,14 @@
  * @module mcp/resources/types
  */
 
-import type { BraiinsClient } from '../../api/braiins';
-import type { MinerService } from '../../services/miner.service';
+import type { BaseContext } from '../tools/types';
 
 /**
- * Context passed to resource handlers
+ * Context passed to resource handlers.
+ * Extends BaseContext to include all services.
  */
-export interface ResourceContext {
-  minerService: MinerService;
-  braiinsClient: BraiinsClient;
+export interface ResourceContext extends BaseContext {
+  // ResourceContext inherits all services from BaseContext
 }
 
 /**

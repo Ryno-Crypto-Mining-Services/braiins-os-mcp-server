@@ -6,15 +6,14 @@
  * @module mcp/prompts/types
  */
 
-import type { BraiinsClient } from '../../api/braiins';
-import type { MinerService } from '../../services/miner.service';
+import type { BaseContext } from '../tools/types';
 
 /**
- * Context passed to prompt handlers
+ * Context passed to prompt handlers.
+ * Extends BaseContext to include all services.
  */
-export interface PromptContext {
-  minerService: MinerService;
-  braiinsClient: BraiinsClient;
+export interface PromptContext extends BaseContext {
+  // PromptContext inherits all services from BaseContext
 }
 
 /**

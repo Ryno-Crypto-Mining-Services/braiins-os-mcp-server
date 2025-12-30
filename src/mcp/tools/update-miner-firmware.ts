@@ -7,7 +7,6 @@
  * @module mcp/tools/update-miner-firmware
  */
 
-import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { createChildLogger } from '../../utils/logger';
 import type { MCPToolDefinition, ToolArguments, ToolContext } from './types';
@@ -51,30 +50,7 @@ interface MinerUpdateResult {
   duration?: string;
 }
 
-/**
- * Firmware update job state.
- */
-interface FirmwareUpdateJob {
-  jobId: string;
-  status: JobStatus;
-  minerIds: string[];
-  version: string;
-  progress: {
-    total: number;
-    completed: number;
-    failed: number;
-    current?: string;
-  };
-  results: MinerUpdateResult[];
-  startedAt: string;
-  completedAt?: string;
-  estimatedCompletion?: string;
-}
-
-/**
- * In-memory job storage (would be Redis/database in production).
- */
-const jobStore = new Map<string, FirmwareUpdateJob>();
+// Job storage is now handled by JobService (passed in context)
 
 /**
  * Simulates firmware update for a single miner.
@@ -161,44 +137,46 @@ async function updateSingleMiner(
 /**
  * Processes firmware update job in background.
  *
- * @param job - Job to process
+ * @param jobId - Job ID to process
  * @param context - Tool context
+ * @param validated - Validated input parameters
  */
-async function processJob(job: FirmwareUpdateJob, context: ToolContext, force: boolean): Promise<void> {
-  job.status = 'running';
+async function processFirmwareUpdate(
+  jobId: string,
+  context: ToolContext,
+  validated: z.infer<typeof UpdateMinerFirmwareArgsSchema>
+): Promise<void> {
+  // Track cumulative progress (JobService expects absolute values, not deltas)
+  let completedCount = 0;
+  let failedCount = 0;
 
   // Process miners sequentially for simplicity (parallel with concurrency limit in production)
-  for (const minerId of job.minerIds) {
-    job.progress.current = minerId;
-
-    const result = await updateSingleMiner(minerId, job.version, force, context);
-
-    job.results.push(result);
+  for (const minerId of validated.minerIds) {
+    const result = await updateSingleMiner(minerId, validated.version, validated.force, context);
 
     if (result.status === 'completed') {
-      job.progress.completed++;
+      completedCount++;
+      await context.jobService.updateProgress(jobId, completedCount, failedCount);
     } else {
-      job.progress.failed++;
+      failedCount++;
+      await context.jobService.updateProgress(jobId, completedCount, failedCount);
+      await context.jobService.addError(jobId, {
+        minerId,
+        error: result.error ?? 'Unknown error',
+        suggestion: 'Check miner connectivity with ping_miner or review miner logs',
+        timestamp: new Date().toISOString(),
+      });
     }
-
-    // Update estimated completion
-    const elapsed = Date.now() - new Date(job.startedAt).getTime();
-    const avgTimePerMiner = elapsed / (job.progress.completed + job.progress.failed);
-    const remaining = job.progress.total - (job.progress.completed + job.progress.failed);
-    const estimatedMs = remaining * avgTimePerMiner;
-    job.estimatedCompletion = new Date(Date.now() + estimatedMs).toISOString();
   }
 
-  job.status = job.progress.failed === 0 ? 'completed' : 'failed';
-  job.completedAt = new Date().toISOString();
-  delete job.progress.current;
-  delete job.estimatedCompletion;
+  // Complete the job
+  await context.jobService.completeJob(jobId);
 
   logger.info('Firmware update job completed', {
-    jobId: job.jobId,
-    total: job.progress.total,
-    completed: job.progress.completed,
-    failed: job.progress.failed,
+    jobId,
+    total: validated.minerIds.length,
+    completed: completedCount,
+    failed: failedCount,
   });
 }
 
@@ -245,32 +223,20 @@ export const updateMinerFirmwareTool: MCPToolDefinition = {
     try {
       const validated = UpdateMinerFirmwareArgsSchema.parse(args);
 
-      // Create job
-      const jobId = randomUUID();
-      const job: FirmwareUpdateJob = {
-        jobId,
-        status: 'pending',
-        minerIds: validated.minerIds,
+      // Create job using JobService
+      const job = await context.jobService.createJob('firmware_update', validated.minerIds.length, {
         version: validated.version,
-        progress: {
-          total: validated.minerIds.length,
-          completed: 0,
-          failed: 0,
-        },
-        results: [],
-        startedAt: new Date().toISOString(),
-      };
-
-      // Store job
-      jobStore.set(jobId, job);
+        minerIds: validated.minerIds,
+        force: validated.force,
+      });
 
       // Start background processing
-      processJob(job, context, validated.force).catch((error) => {
+      processFirmwareUpdate(job.jobId, context, validated).catch(async (error) => {
         logger.error('Job processing failed', {
-          jobId,
+          jobId: job.jobId,
           error: error instanceof Error ? error.message : 'Unknown error',
         });
-        job.status = 'failed';
+        await context.jobService.failJob(job.jobId, error instanceof Error ? error.message : 'Unknown error');
       });
 
       // Return concise or verbose response
@@ -282,7 +248,7 @@ export const updateMinerFirmwareTool: MCPToolDefinition = {
               text: JSON.stringify(
                 {
                   success: true,
-                  jobId,
+                  jobId: job.jobId,
                   status: job.status,
                   progress: job.progress,
                   minerIds: validated.minerIds,
@@ -305,7 +271,7 @@ export const updateMinerFirmwareTool: MCPToolDefinition = {
             type: 'text',
             text: JSON.stringify({
               success: true,
-              jobId,
+              jobId: job.jobId,
               status: job.status,
               progress: job.progress,
               message: `Update started for ${validated.minerIds.length} miner(s). Poll with check_firmware_job_status.`,
@@ -364,11 +330,11 @@ export const checkFirmwareJobStatusTool: MCPToolDefinition = {
     },
   },
 
-  handler: async (args: ToolArguments) => {
+  handler: async (args: ToolArguments, context: ToolContext) => {
     try {
       const { jobId, detailLevel = 'concise' } = args as { jobId: string; detailLevel?: 'concise' | 'verbose' };
 
-      const job = jobStore.get(jobId);
+      const job = await context.jobService.getJob(jobId);
 
       if (!job) {
         return {
@@ -397,7 +363,6 @@ export const checkFirmwareJobStatusTool: MCPToolDefinition = {
                 jobId: job.jobId,
                 status: job.status,
                 progress: job.progress,
-                estimatedCompletion: job.estimatedCompletion,
               }),
             },
           ],

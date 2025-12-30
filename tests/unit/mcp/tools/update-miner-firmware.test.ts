@@ -5,6 +5,7 @@
 import type { BraiinsClient } from '../../../../src/api/braiins';
 import type { ToolContext, ToolResult } from '../../../../src/mcp/tools/types';
 import { checkFirmwareJobStatusTool, updateMinerFirmwareTool } from '../../../../src/mcp/tools/update-miner-firmware';
+import type { JobService } from '../../../../src/services/job.service';
 import type { MinerRegistration, MinerService, MinerStatusSummary } from '../../../../src/services/miner.service';
 
 /**
@@ -85,9 +86,37 @@ describe('update_miner_firmware tool', () => {
       refreshMinerStatus: jest.fn().mockResolvedValue(mockMinerStatus),
     };
 
+    const mockJobService: Partial<JobService> = {
+      createJob: jest.fn().mockImplementation((_type: string, total: number) => {
+        return Promise.resolve({
+          jobId: 'test-job-123',
+          status: 'pending',
+          progress: { total, completed: 0, failed: 0 },
+          startedAt: new Date().toISOString(),
+        });
+      }),
+      getJob: jest.fn().mockImplementation((jobId: string) => {
+        if (jobId === 'non-existent-job-id') {
+          return Promise.resolve(null);
+        }
+        return Promise.resolve({
+          jobId,
+          status: 'completed',
+          progress: { total: 1, completed: 1, failed: 0 },
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        });
+      }),
+      updateProgress: jest.fn().mockResolvedValue(undefined),
+      addError: jest.fn().mockResolvedValue(undefined),
+      completeJob: jest.fn().mockResolvedValue(undefined),
+      failJob: jest.fn().mockResolvedValue(undefined),
+    };
+
     mockContext = {
       minerService: mockMinerService as MinerService,
       braiinsClient: {} as BraiinsClient,
+      jobService: mockJobService as unknown as JobService,
     };
   });
 

@@ -8,6 +8,7 @@
 
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { BraiinsClient } from '../../api/braiins';
+import type { JobService } from '../../services/job.service';
 import type { MinerService } from '../../services/miner.service';
 
 /**
@@ -21,11 +22,24 @@ export type ToolArguments = Record<string, unknown>;
 export type ToolResult = CallToolResult;
 
 /**
- * Context available to all tool handlers.
+ * Base context shared across all MCP handlers (tools, resources, prompts).
+ * Contains all services available to handlers.
  */
-export interface ToolContext {
+export interface BaseContext {
+  /** Miner management service */
   minerService: MinerService;
+  /** Braiins OS API client */
   braiinsClient: BraiinsClient;
+  /** Background job tracking service */
+  jobService: JobService;
+}
+
+/**
+ * Context available to all tool handlers.
+ * Extends BaseContext for consistency.
+ */
+export interface ToolContext extends BaseContext {
+  // ToolContext inherits all services from BaseContext
 }
 
 /**

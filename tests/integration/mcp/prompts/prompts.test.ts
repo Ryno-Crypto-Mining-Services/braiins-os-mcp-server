@@ -10,6 +10,7 @@ import { batchFirmwareUpdatePrompt } from '../../../../src/mcp/prompts/batch-fir
 import { optimizePowerEfficiencyPrompt } from '../../../../src/mcp/prompts/optimize-power-efficiency';
 import { troubleshootMinerOfflinePrompt } from '../../../../src/mcp/prompts/troubleshoot-miner-offline';
 import type { PromptContext } from '../../../../src/mcp/prompts/types';
+import type { JobService } from '../../../../src/services/job.service';
 import type {
   FleetStatusSummary,
   MinerService,
@@ -146,9 +147,19 @@ describe('MCP Prompts Integration Tests', () => {
       getFleetStatus: jest.fn().mockResolvedValue(mockFleetStatus),
     };
 
+    const mockJobService: Partial<JobService> = {
+      createJob: jest.fn().mockResolvedValue({
+        jobId: 'test-job-123',
+        status: 'pending',
+        progress: { total: 0, completed: 0, failed: 0 },
+        startedAt: new Date().toISOString(),
+      }),
+    };
+
     mockContext = {
       minerService: mockMinerService as MinerService,
       braiinsClient: {} as BraiinsClient,
+      jobService: mockJobService as unknown as JobService,
     };
   });
 

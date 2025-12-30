@@ -7,15 +7,7 @@
  * @module mcp/resources/job-status
  */
 
-import type { JobService } from '../../services/job.service';
-import type { MCPResourceDefinition, ResourceContent } from './types';
-
-/**
- * Extended resource context that includes job service.
- */
-interface JobResourceContext {
-  jobService?: JobService;
-}
+import type { MCPResourceDefinition, ResourceContent, ResourceContext } from './types';
 
 export const jobStatusResource: MCPResourceDefinition = {
   uriTemplate: 'braiins:///jobs/{jobId}',
@@ -23,7 +15,7 @@ export const jobStatusResource: MCPResourceDefinition = {
   description: 'Detailed status and progress information for a background job',
   mimeType: 'application/json',
 
-  handler: async (uri: string, context: unknown): Promise<ResourceContent> => {
+  handler: async (uri: string, context: ResourceContext): Promise<ResourceContent> => {
     try {
       // Extract jobId from URI pattern: braiins:///jobs/{jobId}
       const match = uri.match(/braiins:\/\/\/jobs\/([^/]+)/);
@@ -40,21 +32,9 @@ export const jobStatusResource: MCPResourceDefinition = {
       }
 
       const jobId = match[1];
-      const jobContext = context as JobResourceContext;
 
-      if (!jobContext.jobService) {
-        return {
-          uri,
-          mimeType: 'application/json',
-          text: JSON.stringify({
-            error: 'Job service not available',
-            suggestion: 'Job tracking is not enabled on this server',
-          }),
-        };
-      }
-
-      // Get job status from service
-      const job = await jobContext.jobService.getJob(jobId);
+      // ResourceContext now includes jobService via BaseContext
+      const job = await context.jobService.getJob(jobId);
 
       if (!job) {
         return {
