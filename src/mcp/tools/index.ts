@@ -7,6 +7,8 @@
  */
 
 import { checkJobStatusTool } from './check-job-status';
+import { configureAutotuningTool } from './configure-autotuning';
+import { configureNetworkTool } from './configure-network';
 import { factoryResetTool } from './factory-reset';
 import { getFleetStatusTool } from './get-fleet-status';
 import { getMinerInfoTool } from './get-miner-info';
@@ -39,6 +41,8 @@ export const ALL_TOOLS: MCPToolDefinition[] = [
   rebootMinerTool,
   setPowerTargetTool,
   setHashrateTargetTool,
+  configureAutotuningTool,
+  configureNetworkTool,
   updateMinerFirmwareTool,
   checkFirmwareJobStatusTool,
   checkJobStatusTool,
