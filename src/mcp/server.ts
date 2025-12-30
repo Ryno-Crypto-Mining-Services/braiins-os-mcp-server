@@ -23,6 +23,7 @@ import type { AppConfig } from '../config/env';
 import { createJobService, JobService } from '../services/job.service';
 import { createMinerService, MinerService } from '../services/miner.service';
 import { createChildLogger } from '../utils/logger';
+import { createBaseContext } from './context';
 import { ALL_PROMPTS, PROMPT_HANDLERS } from './prompts';
 import { ALL_RESOURCES } from './resources';
 import { ALL_TOOLS, TOOL_HANDLERS } from './tools';
@@ -68,11 +69,7 @@ export async function createMCPServer(deps: MCPDependencies): Promise<MCPServerW
   const jobService = createJobService(deps.redis);
 
   // Create shared base context for all handlers (tools, resources, prompts)
-  const baseContext = {
-    minerService,
-    braiinsClient,
-    jobService,
-  };
+  const baseContext = createBaseContext(minerService, braiinsClient, jobService);
 
   const server = new Server(
     {

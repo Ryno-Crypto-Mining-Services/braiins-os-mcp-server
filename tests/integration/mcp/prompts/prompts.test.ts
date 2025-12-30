@@ -6,6 +6,7 @@
  */
 
 import type { BraiinsClient } from '../../../../src/api/braiins';
+import { createBaseContext } from '../../../../src/mcp/context';
 import { batchFirmwareUpdatePrompt } from '../../../../src/mcp/prompts/batch-firmware-update';
 import { optimizePowerEfficiencyPrompt } from '../../../../src/mcp/prompts/optimize-power-efficiency';
 import { troubleshootMinerOfflinePrompt } from '../../../../src/mcp/prompts/troubleshoot-miner-offline';
@@ -156,11 +157,11 @@ describe('MCP Prompts Integration Tests', () => {
       }),
     };
 
-    mockContext = {
-      minerService: mockMinerService as MinerService,
-      braiinsClient: {} as BraiinsClient,
-      jobService: mockJobService as unknown as JobService,
-    };
+    mockContext = createBaseContext(
+      mockMinerService as MinerService,
+      {} as BraiinsClient,
+      mockJobService as unknown as JobService
+    );
   });
 
   describe('troubleshoot_miner_offline prompt', () => {
