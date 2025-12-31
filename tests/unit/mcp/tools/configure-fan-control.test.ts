@@ -3,23 +3,8 @@
  */
 
 import { configureFanControlTool } from '../../../../src/mcp/tools/configure-fan-control';
-import type { ToolContext, ToolResult } from '../../../../src/mcp/tools/types';
-
-/**
- * Helper to extract text from tool result
- */
-function getTextFromResult(result: ToolResult): string {
-  if (!result.content || result.content.length === 0) {
-    throw new Error('Result has no content');
-  }
-
-  const firstContent = result.content[0];
-  if (!firstContent || firstContent.type !== 'text') {
-    throw new Error('First content item is not text');
-  }
-
-  return firstContent.text;
-}
+import type { ToolContext } from '../../../../src/mcp/tools/types';
+import { getTextFromResult } from '../../helpers/tool-test-utils';
 
 describe('configure_fan_control tool', () => {
   let mockContext: Partial<ToolContext>;

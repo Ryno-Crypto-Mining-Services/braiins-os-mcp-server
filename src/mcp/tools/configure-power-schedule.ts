@@ -7,6 +7,7 @@
  * @module mcp/tools/configure-power-schedule
  */
 
+import { parseExpression } from 'cron-parser';
 import { z } from 'zod';
 import { createChildLogger } from '../../utils/logger';
 import type { MCPToolDefinition, ToolArguments, ToolContext } from './types';
@@ -25,14 +26,28 @@ function validateCronExpression(cron: string): boolean {
 
 /**
  * Calculate next execution time for a cron expression.
- * Simplified placeholder - returns current time + 1 minute.
- * TODO: Replace with actual cron parser library (e.g., cron-parser) to calculate
- * next execution time based on cron expression and timezone.
+ * Uses cron-parser library to accurately calculate the next execution time
+ * based on the cron expression and timezone.
+ *
+ * @param cron - 5-field cron expression (minute hour day month weekday)
+ * @param timezone - IANA timezone (e.g., 'America/New_York', 'UTC')
+ * @returns ISO string of next execution time
  */
-function calculateNextExecution(): string {
-  const now = new Date();
-  const nextRun = new Date(now.getTime() + 60000); // Add 1 minute
-  return nextRun.toISOString();
+function calculateNextExecution(cron: string, timezone: string): string {
+  try {
+    const interval = parseExpression(cron, {
+      currentDate: new Date(),
+      tz: timezone,
+    });
+    const nextDate = interval.next();
+    return nextDate.toISOString();
+  } catch (error) {
+    // Fallback to current time + 1 minute if parsing fails
+    logger.warn('Failed to parse cron expression, using fallback', { cron, timezone, error });
+    const now = new Date();
+    const nextRun = new Date(now.getTime() + 60000);
+    return nextRun.toISOString();
+  }
 }
 
 /**
@@ -238,7 +253,7 @@ export const configurePowerScheduleTool: MCPToolDefinition = {
       // Prepare schedule output with next execution times
       const scheduleOutputs: ScheduleOutput[] = validated.schedules.map((schedule) => ({
         cron: schedule.cron,
-        nextExecution: calculateNextExecution(),
+        nextExecution: calculateNextExecution(schedule.cron, validated.timezone),
       }));
 
       // Verbose response

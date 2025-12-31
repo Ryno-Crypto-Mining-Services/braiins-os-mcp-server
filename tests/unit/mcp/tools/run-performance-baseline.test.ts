@@ -2,25 +2,10 @@
  * Tests for Run Performance Baseline Tool
  */
 
-import { runPerformanceBaselineTool, checkBaselineJobStatusTool } from '../../../../src/mcp/tools/run-performance-baseline';
-import type { ToolContext, ToolResult } from '../../../../src/mcp/tools/types';
+import { checkBaselineJobStatusTool, runPerformanceBaselineTool } from '../../../../src/mcp/tools/run-performance-baseline';
+import type { ToolContext } from '../../../../src/mcp/tools/types';
 import type { Job } from '../../../../src/services/job.service';
-
-/**
- * Helper to extract text from tool result
- */
-function getTextFromResult(result: ToolResult): string {
-  if (!result.content || result.content.length === 0) {
-    throw new Error('Result has no content');
-  }
-
-  const firstContent = result.content[0];
-  if (!firstContent || firstContent.type !== 'text') {
-    throw new Error('First content item is not text');
-  }
-
-  return firstContent.text;
-}
+import { getTextFromResult } from '../../helpers/tool-test-utils';
 
 describe('run_performance_baseline tool', () => {
   let mockContext: Partial<ToolContext>;
