@@ -10,6 +10,7 @@
 import { z } from 'zod';
 import { createChildLogger } from '../../utils/logger';
 import type { MCPToolDefinition, ToolArguments, ToolContext } from './types';
+import { validateFanSpeed, validateFanSpeedRange } from './validators';
 
 const logger = createChildLogger({ module: 'configure-fan-control' });
 
@@ -58,75 +59,6 @@ interface MinerConfigResult {
 }
 
 /**
- * Safety constants for fan control.
- */
-const SAFETY_MIN_FAN_SPEED = 30; // Minimum 30% to prevent overheating
-const WARNING_FAN_SPEED = 40; // Generate warning for speeds below 40%
-
-/**
- * Validates fan control configuration for safety.
- *
- * @param mode - Fan control mode
- * @param fanSpeed - Manual fan speed (if manual mode)
- * @param minFanSpeed - Minimum fan speed (if auto mode)
- * @param maxFanSpeed - Maximum fan speed (if auto mode)
- * @returns Validation result with warnings
- */
-function validateSafety(
-  mode: 'auto' | 'manual',
-  fanSpeed?: number,
-  minFanSpeed?: number,
-  maxFanSpeed?: number
-): { valid: boolean; error?: string; warning?: string } {
-  if (mode === 'manual') {
-    if (fanSpeed === undefined) {
-      return {
-        valid: false,
-        error: 'fanSpeed is required for manual mode',
-      };
-    }
-
-    if (fanSpeed < SAFETY_MIN_FAN_SPEED) {
-      return {
-        valid: false,
-        error: `Fan speed must be at least ${SAFETY_MIN_FAN_SPEED}% to prevent overheating`,
-      };
-    }
-
-    if (fanSpeed < WARNING_FAN_SPEED) {
-      return {
-        valid: true,
-        warning: `Fan speed ${fanSpeed}% is low. Monitor temperatures closely.`,
-      };
-    }
-  } else {
-    // Auto mode
-    if (minFanSpeed !== undefined && minFanSpeed < SAFETY_MIN_FAN_SPEED) {
-      return {
-        valid: false,
-        error: `Minimum fan speed must be at least ${SAFETY_MIN_FAN_SPEED}% to prevent overheating`,
-      };
-    }
-
-    if (minFanSpeed !== undefined && maxFanSpeed !== undefined && minFanSpeed > maxFanSpeed) {
-      return {
-        valid: false,
-        error: 'Minimum fan speed cannot be greater than maximum fan speed',
-      };
-    }
-
-    if (minFanSpeed !== undefined && minFanSpeed < WARNING_FAN_SPEED) {
-      return {
-        valid: true,
-        warning: `Minimum fan speed ${minFanSpeed}% is low. Ensure adequate cooling.`,
-      };
-    }
-  }
-
-  return { valid: true };
-}
-
-/**
  * Configures fan control for a single miner.
  *
  * @param minerId - Miner ID to configure
@@ -150,7 +82,29 @@ async function configureSingleMiner(
   try {
     // Validate safety if enabled
     if (validate) {
-      const safetyCheck = validateSafety(mode, fanSpeed, minFanSpeed, maxFanSpeed);
+      let safetyCheck;
+
+      if (mode === 'manual') {
+        if (fanSpeed === undefined) {
+          return {
+            minerId,
+            status: 'failed',
+            error: 'fanSpeed is required for manual mode',
+          };
+        }
+        safetyCheck = validateFanSpeed(fanSpeed, false);
+      } else {
+        // Auto mode
+        if (minFanSpeed === undefined || maxFanSpeed === undefined) {
+          return {
+            minerId,
+            status: 'failed',
+            error: 'minFanSpeed and maxFanSpeed are required for auto mode',
+          };
+        }
+        safetyCheck = validateFanSpeedRange(minFanSpeed, maxFanSpeed, false);
+      }
+
       if (!safetyCheck.valid) {
         return {
           minerId,
@@ -209,8 +163,15 @@ async function configureSingleMiner(
     };
 
     if (validate) {
-      const safetyCheck = validateSafety(mode, fanSpeed, minFanSpeed, maxFanSpeed);
-      if (safetyCheck.warning) {
+      let safetyCheck;
+
+      if (mode === 'manual' && fanSpeed !== undefined) {
+        safetyCheck = validateFanSpeed(fanSpeed, false);
+      } else if (mode === 'auto' && minFanSpeed !== undefined && maxFanSpeed !== undefined) {
+        safetyCheck = validateFanSpeedRange(minFanSpeed, maxFanSpeed, false);
+      }
+
+      if (safetyCheck?.warning) {
         result.warning = safetyCheck.warning;
       }
     }

@@ -11,18 +11,9 @@ import { parseExpression } from 'cron-parser';
 import { z } from 'zod';
 import { createChildLogger } from '../../utils/logger';
 import type { MCPToolDefinition, ToolArguments, ToolContext } from './types';
+import { validateCronExpression as validateCron, validateTimezone, validatePowerLimit } from './validators';
 
 const logger = createChildLogger({ module: 'configure-power-schedule' });
-
-/**
- * Validate cron expression format (5-field cron: minute hour day month weekday)
- */
-function validateCronExpression(cron: string): boolean {
-  // Regex for standard 5-field cron format
-  const cronRegex =
-    /^(\*|([0-9]|[1-5][0-9])|\*\/([0-9]|[1-5][0-9])) (\*|([0-9]|1[0-9]|2[0-3])|\*\/([0-9]|1[0-9]|2[0-3])) (\*|([1-9]|[12][0-9]|3[01])|\*\/([1-9]|[12][0-9]|3[01])) (\*|([1-9]|1[0-2])|\*\/([1-9]|1[0-2])) (\*|[0-6]|\*\/[0-6])$/;
-  return cronRegex.test(cron);
-}
 
 /**
  * Calculate next execution time for a cron expression.
@@ -54,10 +45,16 @@ function calculateNextExecution(cron: string, timezone: string): string {
  * Power schedule schema
  */
 const PowerScheduleSchema = z.object({
-  cron: z.string().refine(validateCronExpression, {
+  cron: z.string().refine((val) => validateCron(val).valid, {
     message: "Invalid cron expression. Expected format: 'minute hour day month weekday' (e.g., '0 2 * * *')",
   }),
-  powerLimit: z.number().int().min(0).max(10000).describe('Power limit in watts'),
+  powerLimit: z
+    .number()
+    .int()
+    .refine((val) => validatePowerLimit(val).valid, {
+      message: 'Power limit must be between 0 and 10000 watts',
+    })
+    .describe('Power limit in watts'),
   mode: z.enum(['enable', 'disable']).describe('Enable or disable the miner'),
 });
 
@@ -109,13 +106,12 @@ async function configureSingleMiner(
   try {
     // Validate timezone if enabled
     if (validate) {
-      try {
-        new Date().toLocaleString('en-US', { timeZone: timezone });
-      } catch (error) {
+      const timezoneValidation = validateTimezone(timezone);
+      if (!timezoneValidation.valid) {
         return {
           minerId,
           status: 'failed',
-          error: `Invalid timezone: ${timezone}. Use IANA format (e.g., America/New_York, Europe/London, UTC)`,
+          error: timezoneValidation.error,
         };
       }
     }
