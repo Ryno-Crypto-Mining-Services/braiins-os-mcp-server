@@ -11,6 +11,11 @@ import * as grpc from '@grpc/grpc-js';
 import { GRPC_CONFIG } from '../../config/constants';
 import { GrpcConnectionError } from '../../utils/errors';
 import { createChildLogger } from '../../utils/logger';
+import { createAuthMetadata, getAuthToken } from './auth';
+import {
+  createCoolingServiceClient,
+  createPerformanceServiceClient,
+} from './proto-loader';
 
 const grpcLogger = createChildLogger({ module: 'grpc' });
 
@@ -30,6 +35,101 @@ export interface GrpcConfig {
 export interface MinerConnection {
   host: string;
   port: number;
+}
+
+/**
+ * Cooling mode configuration
+ */
+export interface CoolingModeConfig {
+  mode: 'auto' | 'manual';
+  fanSpeed?: number; // For manual mode: 0-100
+  minFanSpeed?: number; // For auto mode: 0-100
+  maxFanSpeed?: number; // For auto mode: 0-100
+  targetTemperature?: number; // For auto mode: target temp in Celsius
+}
+
+/**
+ * Tuner state information
+ */
+export interface TunerState {
+  enabled: boolean;
+  mode: string;
+  powerTarget?: number; // Watts
+  hashrateTarget?: number; // TH/s
+}
+
+/**
+ * gRPC proto message types for Braiins OS API
+ */
+interface Temperature {
+  celsius: number;
+}
+
+interface Power {
+  watt: number;
+}
+
+interface Hashrate {
+  terahash: number;
+}
+
+interface CoolingManualMode {
+  fan_speed_ratio: number;
+  hot_temperature: Temperature;
+  dangerous_temperature: Temperature;
+  target_temperature: Temperature;
+}
+
+interface CoolingAutoMode {
+  target_temperature: Temperature;
+  hot_temperature: Temperature;
+  dangerous_temperature: Temperature;
+  min_fan_speed: number;
+  max_fan_speed: number;
+}
+
+interface SetCoolingModeRequest {
+  save_action: number;
+  mode: { manual?: CoolingManualMode; auto?: CoolingAutoMode };
+}
+
+interface GetTunerStateResponse {
+  tuner_enabled: boolean;
+  tuner_mode: string;
+  power_target?: Power;
+  hashrate_target?: Hashrate;
+}
+
+interface SetPowerTargetRequest {
+  save_action: number;
+  power_target: Power;
+}
+
+/**
+ * CoolingService client interface
+ */
+interface CoolingServiceClient extends grpc.Client {
+  SetCoolingMode(
+    request: SetCoolingModeRequest,
+    metadata: grpc.Metadata,
+    callback: (error: grpc.ServiceError | null) => void
+  ): grpc.ClientUnaryCall;
+}
+
+/**
+ * PerformanceService client interface
+ */
+interface PerformanceServiceClient extends grpc.Client {
+  GetTunerState(
+    request: Record<string, never>,
+    metadata: grpc.Metadata,
+    callback: (error: grpc.ServiceError | null, response: GetTunerStateResponse) => void
+  ): grpc.ClientUnaryCall;
+  SetPowerTarget(
+    request: SetPowerTargetRequest,
+    metadata: grpc.Metadata,
+    callback: (error: grpc.ServiceError | null) => void
+  ): grpc.ClientUnaryCall;
 }
 
 /**
@@ -70,6 +170,21 @@ export interface GrpcClient {
    * Check firmware update progress.
    */
   getFirmwareUpdateProgress(connection: MinerConnection, taskId: string): Promise<UpdateProgress>;
+
+  /**
+   * Set cooling mode (fan control).
+   */
+  setCoolingMode(connection: MinerConnection, password: string, config: CoolingModeConfig): Promise<void>;
+
+  /**
+   * Get tuner state (performance/autotuning info).
+   */
+  getTunerState(connection: MinerConnection, password: string): Promise<TunerState>;
+
+  /**
+   * Set power target for tuner.
+   */
+  setPowerTarget(connection: MinerConnection, password: string, powerWatts: number): Promise<void>;
 
   /**
    * Test connection to a miner.
@@ -270,6 +385,151 @@ export async function createGrpcClient(config: GrpcConfig): Promise<GrpcClient> 
       return withRetry('getFirmwareUpdateProgress', connection, async () => {
         grpcLogger.debug('getFirmwareUpdateProgress called', { ...connection, taskId });
         throw new Error('Not implemented - waiting for proto file generation');
+      });
+    },
+
+    async setCoolingMode(
+      connection: MinerConnection,
+      password: string,
+      coolingConfig: CoolingModeConfig
+    ): Promise<void> {
+      return withRetry('setCoolingMode', connection, async () => {
+        grpcLogger.debug('Setting cooling mode', { ...connection, config: coolingConfig });
+
+        // Get authentication token
+        const authToken = await getAuthToken(connection.host, connection.port, password);
+        const metadata = createAuthMetadata(authToken.token);
+
+        // Create CoolingService client
+        const credentials = config.useTls ? grpc.credentials.createSsl() : grpc.credentials.createInsecure();
+        const client = (await createCoolingServiceClient(
+          connection.host,
+          connection.port,
+          credentials
+        )) as CoolingServiceClient;
+
+        try {
+          // Build the request based on mode
+          const request: SetCoolingModeRequest = {
+            save_action: 1, // SAVE_ACTION_SAVE_AND_APPLY
+            mode:
+              coolingConfig.mode === 'manual'
+                ? {
+                    manual: {
+                      fan_speed_ratio: coolingConfig.fanSpeed ? coolingConfig.fanSpeed / 100 : 0.5,
+                      hot_temperature: { celsius: 80 },
+                      dangerous_temperature: { celsius: 95 },
+                      target_temperature: { celsius: 75 },
+                    },
+                  }
+                : {
+                    auto: {
+                      target_temperature: { celsius: coolingConfig.targetTemperature ?? 75 },
+                      hot_temperature: { celsius: 80 },
+                      dangerous_temperature: { celsius: 95 },
+                      min_fan_speed: coolingConfig.minFanSpeed ?? 30,
+                      max_fan_speed: coolingConfig.maxFanSpeed ?? 100,
+                    },
+                  },
+          };
+
+          // Call SetCoolingMode RPC
+          await new Promise<void>((resolve, reject) => {
+            client.SetCoolingMode(request, metadata, (error: grpc.ServiceError | null) => {
+              if (error) {
+                reject(error);
+              } else {
+                resolve();
+              }
+            });
+          });
+
+          grpcLogger.info('Cooling mode set successfully', { ...connection, mode: coolingConfig.mode });
+        } finally {
+          client.close();
+        }
+      });
+    },
+
+    async getTunerState(connection: MinerConnection, password: string): Promise<TunerState> {
+      return withRetry('getTunerState', connection, async () => {
+        grpcLogger.debug('Getting tuner state', connection);
+
+        // Get authentication token
+        const authToken = await getAuthToken(connection.host, connection.port, password);
+        const metadata = createAuthMetadata(authToken.token);
+
+        // Create PerformanceService client
+        const credentials = config.useTls ? grpc.credentials.createSsl() : grpc.credentials.createInsecure();
+        const client = (await createPerformanceServiceClient(
+          connection.host,
+          connection.port,
+          credentials
+        )) as PerformanceServiceClient;
+
+        try {
+          // Call GetTunerState RPC
+          const response = await new Promise<GetTunerStateResponse>((resolve, reject) => {
+            client.GetTunerState({}, metadata, (error: grpc.ServiceError | null, response: GetTunerStateResponse) => {
+              if (error) {
+                reject(error);
+              } else {
+                resolve(response);
+              }
+            });
+          });
+
+          grpcLogger.info('Tuner state retrieved', connection);
+
+          return {
+            enabled: response.tuner_enabled ?? false,
+            mode: response.tuner_mode ?? 'unknown',
+            powerTarget: response.power_target?.watt,
+            hashrateTarget: response.hashrate_target?.terahash,
+          };
+        } finally {
+          client.close();
+        }
+      });
+    },
+
+    async setPowerTarget(connection: MinerConnection, password: string, powerWatts: number): Promise<void> {
+      return withRetry('setPowerTarget', connection, async () => {
+        grpcLogger.debug('Setting power target', { ...connection, powerWatts });
+
+        // Get authentication token
+        const authToken = await getAuthToken(connection.host, connection.port, password);
+        const metadata = createAuthMetadata(authToken.token);
+
+        // Create PerformanceService client
+        const credentials = config.useTls ? grpc.credentials.createSsl() : grpc.credentials.createInsecure();
+        const client = (await createPerformanceServiceClient(
+          connection.host,
+          connection.port,
+          credentials
+        )) as PerformanceServiceClient;
+
+        try {
+          const request: SetPowerTargetRequest = {
+            save_action: 1, // SAVE_ACTION_SAVE_AND_APPLY
+            power_target: { watt: powerWatts },
+          };
+
+          // Call SetPowerTarget RPC
+          await new Promise<void>((resolve, reject) => {
+            client.SetPowerTarget(request, metadata, (error: grpc.ServiceError | null) => {
+              if (error) {
+                reject(error);
+              } else {
+                resolve();
+              }
+            });
+          });
+
+          grpcLogger.info('Power target set successfully', { ...connection, powerWatts });
+        } finally {
+          client.close();
+        }
       });
     },
 

@@ -49,6 +49,7 @@ export interface Job {
   completedAt?: string;
   errors: JobError[];
   metadata?: Record<string, unknown>;
+  results?: unknown; // Stores job-specific results (e.g., performance baseline data)
 }
 
 /**
@@ -74,6 +75,11 @@ export interface JobService {
    * Add error to job.
    */
   addError(jobId: string, error: JobError): Promise<void>;
+
+  /**
+   * Set job results.
+   */
+  setResults(jobId: string, results: unknown): Promise<void>;
 
   /**
    * Mark job as completed.
@@ -204,6 +210,23 @@ export function createJobService(cache: RedisClient | null): JobService {
       serviceLogger.warn('Job error added', {
         jobId,
         error: error.error,
+      });
+    },
+
+    async setResults(jobId: string, results: unknown): Promise<void> {
+      const job = await retrieveJob(jobId);
+      if (!job) {
+        serviceLogger.warn('Job not found for setting results', { jobId });
+        return;
+      }
+
+      job.results = results;
+
+      await storeJob(job);
+
+      serviceLogger.info('Job results set', {
+        jobId,
+        hasResults: !!results,
       });
     },
 

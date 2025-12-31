@@ -139,11 +139,35 @@ async function configureSingleMiner(
     }
 
     // Configure power schedules via Braiins API
-    // TODO: Implement actual API call when available
-    logger.info('Configuring power schedule', {
+    // LIMITATION: Braiins OS gRPC API v1.8.0 does NOT support cron-based scheduling natively.
+    // The API only provides:
+    // - PerformanceService.SetPowerTarget(powerWatts) - Sets power limit IMMEDIATELY
+    // - No built-in scheduler, no cron support, no time-based automation
+    //
+    // WORKAROUND OPTIONS:
+    // 1. Application-level scheduler (recommended):
+    //    - Use node-cron or similar library in the MCP server
+    //    - Store schedules in Redis/database
+    //    - Execute SetPowerTarget() at scheduled times
+    //    - Requires MCP server to be running continuously
+    //
+    // 2. External scheduler (alternative):
+    //    - Use system cron on the host machine
+    //    - Call MCP tools via CLI at scheduled times
+    //    - More reliable but requires system-level configuration
+    //
+    // 3. Braiins OS web UI manual scheduling:
+    //    - Some miners support basic scheduling through web interface
+    //    - Not accessible via API
+    //
+    // For now, this tool logs the schedule but does NOT apply it to the miner.
+    // Real implementation would require application-level scheduler implementation.
+    logger.warn('Power schedule configured locally but NOT applied to miner', {
       minerId,
       schedules,
       timezone,
+      limitation: 'Braiins OS API does not support native cron scheduling',
+      workaround: 'Implement application-level scheduler with node-cron + Redis',
     });
 
     // Invalidate miner config cache
@@ -174,7 +198,7 @@ export const configurePowerScheduleTool: MCPToolDefinition = {
   schema: {
     name: 'configure_power_schedule',
     description:
-      'Configure time-based power schedules for Braiins OS miners with cron-like scheduling. Supports multiple schedules per miner with timezone-aware execution. Schedules persist across miner reboots.',
+      'LIMITATION: Braiins OS API v1.8.0 does NOT support native cron scheduling. This tool validates schedules and calculates next execution times but DOES NOT apply them to miners. To implement scheduling, use an application-level scheduler (node-cron + Redis) or external system cron that calls set_power_target at scheduled times.',
     inputSchema: {
       type: 'object',
       properties: {

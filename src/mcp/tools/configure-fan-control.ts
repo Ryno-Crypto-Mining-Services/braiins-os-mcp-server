@@ -8,6 +8,8 @@
  */
 
 import { z } from 'zod';
+import { createGrpcClient, type CoolingModeConfig } from '../../api/grpc/client';
+import { GRPC_CONFIG } from '../../config/constants';
 import { createChildLogger } from '../../utils/logger';
 import type { MCPToolDefinition, ToolArguments, ToolContext } from './types';
 import { validateFanSpeed, validateFanSpeedRange } from './validators';
@@ -142,16 +144,52 @@ async function configureSingleMiner(
       };
     }
 
-    // Configure fan control via Braiins API
-    // TODO: Implement actual API call when available
-    // For now, log the configuration
-    logger.info('Configuring fan control', {
-      minerId,
-      mode,
-      fanSpeed,
-      minFanSpeed,
-      maxFanSpeed,
-    });
+    // Configure fan control via Braiins OS gRPC API
+    try {
+      // Create gRPC client with miner connection details
+      const grpcClient = await createGrpcClient({
+        defaultHost: registration.host,
+        defaultPort: registration.port ?? 50051,
+        useTls: false,
+        timeout: GRPC_CONFIG.DEFAULT_TIMEOUT_MS,
+      });
+
+      // Prepare cooling mode configuration
+      const coolingConfig: CoolingModeConfig = {
+        mode,
+        ...(mode === 'manual' && fanSpeed !== undefined ? { fanSpeed } : {}),
+        ...(mode === 'auto' && minFanSpeed !== undefined ? { minFanSpeed } : {}),
+        ...(mode === 'auto' && maxFanSpeed !== undefined ? { maxFanSpeed } : {}),
+      };
+
+      // Call setCoolingMode on the gRPC client
+      await grpcClient.setCoolingMode(
+        { host: registration.host, port: registration.port ?? 50051 },
+        registration.password ?? '',
+        coolingConfig
+      );
+
+      logger.info('Fan control configured successfully', {
+        minerId,
+        mode,
+        fanSpeed,
+        minFanSpeed,
+        maxFanSpeed,
+      });
+
+      // Close gRPC client
+      await grpcClient.close();
+    } catch (error) {
+      logger.error('Failed to configure fan control', {
+        minerId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      return {
+        minerId,
+        status: 'failed',
+        error: `API call failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
 
     // Invalidate miner status cache after configuration
     await context.minerService.refreshMinerStatus(minerId);
