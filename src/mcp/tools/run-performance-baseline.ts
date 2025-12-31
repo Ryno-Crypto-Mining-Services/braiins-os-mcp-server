@@ -121,27 +121,48 @@ async function collectModeMetrics(
         // Get current miner status
         const status = await context.minerService.getMinerStatus(minerId);
 
-        // TODO: Extract actual metrics from MinerStatusSummary nested structures
-        // For now, use simulated values based on power target
-        // Actual implementation would extract:
-        // - hashrate: sum of status.hashboards?.hashboards[].stats?.hashrate?.terahash
-        // - temperature: max of status.hashboards?.hashboards[].highest_chip_temp?.celsius
-        // - power: from status.tunerState?.mode_state.powertargetmodestate?.current_target.watt
-        const simulatedHashrate = powerTarget / 30; // Rough estimate
-        const simulatedTemp = 60 + (powerTarget - 2500) / 50; // Higher power = higher temp
+        // Extract actual metrics from MinerStatusSummary nested structures
+        // Hashrate: sum of all hashboards' hashrate
+        let hashrate = 0;
+        if (status.hashboards?.hashboards) {
+          for (const board of status.hashboards.hashboards) {
+            if (board.stats?.hashrate?.terahash_per_second) {
+              hashrate += board.stats.hashrate.terahash_per_second;
+            } else if (board.stats?.hashrate?.gigahash_per_second) {
+              hashrate += board.stats.hashrate.gigahash_per_second / 1000; // Convert GH/s to TH/s
+            }
+          }
+        }
+
+        // Temperature: max temperature across all hashboards
+        let temperature = 0;
+        if (status.hashboards?.hashboards) {
+          for (const board of status.hashboards.hashboards) {
+            if (board.highest_chip_temp?.celsius) {
+              temperature = Math.max(temperature, board.highest_chip_temp.celsius);
+            }
+          }
+        }
+
+        // Power: from tuner state (falls back to set power target if not available)
+        let power = powerTarget; // Default to configured target
+        if (status.tunerState?.mode_state?.powertargetmodestate?.current_target?.watt) {
+          power = status.tunerState.mode_state.powertargetmodestate.current_target.watt;
+        }
 
         metricsData.push({
-          hashrate: simulatedHashrate,
-          power: powerTarget,
-          temperature: simulatedTemp,
+          hashrate,
+          power,
+          temperature,
         });
 
         logger.debug('Collected sample', {
           minerId,
           mode,
           sample: i + 1,
-          hashrate: simulatedHashrate,
-          power: powerTarget,
+          hashrate,
+          power,
+          temperature,
           online: status.online,
         });
       }

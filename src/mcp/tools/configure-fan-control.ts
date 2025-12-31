@@ -145,15 +145,15 @@ async function configureSingleMiner(
     }
 
     // Configure fan control via Braiins OS gRPC API
-    try {
-      // Create gRPC client with miner connection details
-      const grpcClient = await createGrpcClient({
-        defaultHost: registration.host,
-        defaultPort: registration.port ?? 50051,
-        useTls: false,
-        timeout: GRPC_CONFIG.DEFAULT_TIMEOUT_MS,
-      });
+    // Create gRPC client with miner connection details
+    const grpcClient = await createGrpcClient({
+      defaultHost: registration.host,
+      defaultPort: registration.port ?? 50051,
+      useTls: false,
+      timeout: GRPC_CONFIG.DEFAULT_TIMEOUT_MS,
+    });
 
+    try {
       // Prepare cooling mode configuration
       const coolingConfig: CoolingModeConfig = {
         mode,
@@ -176,9 +176,6 @@ async function configureSingleMiner(
         minFanSpeed,
         maxFanSpeed,
       });
-
-      // Close gRPC client
-      await grpcClient.close();
     } catch (error) {
       logger.error('Failed to configure fan control', {
         minerId,
@@ -189,6 +186,9 @@ async function configureSingleMiner(
         status: 'failed',
         error: `API call failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
       };
+    } finally {
+      // Always close gRPC client
+      await grpcClient.close();
     }
 
     // Invalidate miner status cache after configuration
