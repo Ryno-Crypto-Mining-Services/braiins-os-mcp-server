@@ -542,9 +542,10 @@ export const checkBaselineJobStatusTool: MCPToolDefinition = {
           response.results = job.results;
         }
 
-        // Include errors if job has failed
-        if (job.status === 'failed' && job.errors.length > 0) {
-          response.errors = job.errors;
+        // Include error summary if present (matches check-job-status.ts pattern for token optimization)
+        if (job.errors.length > 0) {
+          response.errorCount = job.errors.length;
+          response.recentError = job.errors[job.errors.length - 1]?.error;
         }
 
         return {

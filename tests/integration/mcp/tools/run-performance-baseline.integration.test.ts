@@ -367,8 +367,8 @@ describe('Performance Baseline Integration Tests (Real)', () => {
       const status = JSON.parse(getTextFromResult(statusResult));
 
       expect(status.status).toBe('failed');
-      expect(status.errors).toHaveLength(1);
-      expect(status.errors[0].error).toContain('Failed to set power target');
+      expect(status.errorCount).toBe(1);
+      expect(status.recentError).toContain('Failed to set power target');
     }, TEST_TIMEOUTS.JEST_BASELINE_MS);
   });
 
@@ -488,17 +488,37 @@ describe('Performance Baseline Integration Tests (Real)', () => {
       const getMinerStatusSpy = jest.spyOn(minerService, 'getMinerStatus');
       let callCount = 0;
 
-      // Return different status based on which mode is being tested
-      // Note: First call is pre-flight check in handler, then 2 samples per mode
+      // Mock call pattern for 60s duration with 30s sample interval:
+      //   Call 1: Pre-flight check (handler validates miner is online)
+      //   Calls 2-3: Low mode samples (60s / 30s = 2 samples)
+      //   Calls 4-5: Medium mode samples (2 samples)
+      //   Calls 6-7: High mode samples (2 samples)
+      // Total expected: 1 + (3 modes × 2 samples) = 7 calls
+      const PREFLIGHT_CALLS = 1;
+      const SAMPLES_PER_MODE = 2; // Math.floor(60s / 30s)
+
       getMinerStatusSpy.mockImplementation(async (): Promise<MinerStatusSummary> => {
         callCount++;
-        if (callCount <= 3) {
+
+        // Pre-flight check uses default lowStatus
+        if (callCount <= PREFLIGHT_CALLS) {
           return lowStatus;
-        } // Pre-flight + first mode samples (calls 1-3)
-        if (callCount <= 5) {
-          return mediumStatus;
-        } // Second mode samples (calls 4-5)
-        return highStatus; // Third mode samples (calls 6+)
+        }
+
+        // Calculate which mode we're in based on sample index
+        const sampleIndex = callCount - PREFLIGHT_CALLS; // 1-indexed after pre-flight
+        const modeIndex = Math.floor((sampleIndex - 1) / SAMPLES_PER_MODE);
+
+        switch (modeIndex) {
+          case 0:
+            return lowStatus; // Samples 1-2 (calls 2-3)
+          case 1:
+            return mediumStatus; // Samples 3-4 (calls 4-5)
+          case 2:
+            return highStatus; // Samples 5-6 (calls 6-7)
+          default:
+            return highStatus; // Fallback for any additional calls
+        }
       });
 
       const startResult = await runPerformanceBaselineTool.handler(
