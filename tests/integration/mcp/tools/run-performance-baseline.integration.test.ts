@@ -367,6 +367,7 @@ describe('Performance Baseline Integration Tests (Real)', () => {
       const status = JSON.parse(getTextFromResult(statusResult));
 
       expect(status.status).toBe('failed');
+      expect(status.errors).toHaveLength(1);
       expect(status.errors[0].error).toContain('Failed to set power target');
     }, TEST_TIMEOUTS.JEST_BASELINE_MS);
   });
@@ -488,15 +489,16 @@ describe('Performance Baseline Integration Tests (Real)', () => {
       let callCount = 0;
 
       // Return different status based on which mode is being tested
+      // Note: First call is pre-flight check in handler, then 2 samples per mode
       getMinerStatusSpy.mockImplementation(async (): Promise<MinerStatusSummary> => {
         callCount++;
-        if (callCount <= 2) {
+        if (callCount <= 3) {
           return lowStatus;
-        } // First mode samples
-        if (callCount <= 4) {
+        } // Pre-flight + first mode samples (calls 1-3)
+        if (callCount <= 5) {
           return mediumStatus;
-        } // Second mode samples
-        return highStatus; // Third mode samples
+        } // Second mode samples (calls 4-5)
+        return highStatus; // Third mode samples (calls 6+)
       });
 
       const startResult = await runPerformanceBaselineTool.handler(

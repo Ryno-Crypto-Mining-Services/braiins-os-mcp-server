@@ -542,6 +542,11 @@ export const checkBaselineJobStatusTool: MCPToolDefinition = {
           response.results = job.results;
         }
 
+        // Include errors if job has failed
+        if (job.status === 'failed' && job.errors.length > 0) {
+          response.errors = job.errors;
+        }
+
         return {
           content: [
             {
