@@ -171,7 +171,7 @@ async function collectModeMetrics(
       const avgHashrate = metricsData.reduce((sum, m) => sum + m.hashrate, 0) / metricsData.length;
       const avgPower = metricsData.reduce((sum, m) => sum + m.power, 0) / metricsData.length;
       const avgTemp = metricsData.reduce((sum, m) => sum + m.temperature, 0) / metricsData.length;
-      const efficiency = (avgPower / avgHashrate) * 1000; // J/TH
+      const efficiency = avgPower / avgHashrate; // J/TH (Watts per Terahash)
 
       return {
         mode,
