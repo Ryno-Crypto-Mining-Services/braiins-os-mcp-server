@@ -1344,6 +1344,148 @@ const detailedStatus = await mcpServer.callTool('get_miner_status', {
 });
 ```
 
+### Example 5: Performance Baseline Testing Workflow
+
+```typescript
+// Complete workflow for running and analyzing performance baseline tests
+
+// Step 1: Start baseline test on a miner
+const baselineStart = await mcpServer.callTool('run_performance_baseline', {
+  minerId: 'miner-001',
+  duration: 300,                  // 5 minutes per power mode
+  modes: ['low', 'medium', 'high'], // Test all power modes
+  detailLevel: 'verbose'          // Get full job details
+});
+
+console.log(`Baseline test started: ${baselineStart.jobId}`);
+console.log(`Estimated duration: ${baselineStart.estimatedDuration}`);
+// Output: "Baseline test started: baseline-1735689600-1"
+//         "Estimated duration: 900 seconds" (300s × 3 modes)
+
+// Step 2: Poll job status until completion
+let jobStatus;
+do {
+  // Wait 60 seconds between polls
+  await new Promise(resolve => setTimeout(resolve, 60000));
+
+  jobStatus = await mcpServer.callTool('check_baseline_job_status', {
+    jobId: baselineStart.jobId,
+    detailLevel: 'concise'        // Use concise for polling
+  });
+
+  console.log(`Progress: ${jobStatus.progress.completed}/${jobStatus.progress.total} modes (${jobStatus.progress.percentage}%)`);
+  // Output: "Progress: 1/3 modes (33%)"
+  //         "Progress: 2/3 modes (67%)"
+  //         "Progress: 3/3 modes (100%)"
+
+} while (jobStatus.status === 'pending' || jobStatus.status === 'running');
+
+// Step 3: Retrieve and analyze results
+if (jobStatus.status === 'completed') {
+  const results = await mcpServer.callTool('check_baseline_job_status', {
+    jobId: baselineStart.jobId,
+    detailLevel: 'verbose'        // Get full results
+  });
+
+  console.log('\n=== Baseline Test Results ===');
+  console.log(`Optimal Mode: ${results.results.optimalMode}`);
+  console.log(`Best Hashrate: ${results.results.baseline.hashrate} TH/s`);
+  console.log(`Best Power: ${results.results.baseline.power}W`);
+  console.log(`Best Efficiency: ${results.results.baseline.efficiency} J/TH`);
+  console.log(`Temperature: ${results.results.baseline.temperature}°C`);
+
+  console.log('\n=== Recommendations ===');
+  results.results.recommendations.forEach((rec, idx) => {
+    console.log(`${idx + 1}. ${rec}`);
+  });
+  // Output: "1. Switch to low power mode for optimal efficiency (27.2 J/TH)"
+  //         "2. Temperature is within safe range (62°C)"
+
+  console.log('\n=== Detailed Metrics by Mode ===');
+  results.results.detailedMetrics.forEach(modeResult => {
+    console.log(`\n${modeResult.mode.toUpperCase()} Power Mode (${modeResult.samples} samples):`);
+    console.log(`  Hashrate: ${modeResult.metrics.hashrate.toFixed(1)} TH/s`);
+    console.log(`  Power: ${modeResult.metrics.power}W`);
+    console.log(`  Efficiency: ${modeResult.metrics.efficiency.toFixed(1)} J/TH`);
+    console.log(`  Temperature: ${modeResult.metrics.temperature}°C`);
+  });
+  // Output: "LOW Power Mode (10 samples):"
+  //         "  Hashrate: 92.0 TH/s"
+  //         "  Power: 2500W"
+  //         "  Efficiency: 27.2 J/TH"
+  //         "  Temperature: 62°C"
+  //         ... (medium and high modes)
+
+  // Step 4: Apply optimal configuration (optional)
+  if (results.results.optimalMode !== 'medium') {
+    console.log(`\nOptimal mode is ${results.results.optimalMode}, consider updating power target.`);
+    // Use configure_power_target tool to apply the optimal power setting
+  }
+
+} else if (jobStatus.status === 'failed') {
+  console.error('Baseline test failed:', jobStatus.errors[0].error);
+  console.error('Suggestion:', jobStatus.errors[0].suggestion);
+}
+```
+
+**Quick Baseline Test (Single Mode)**:
+```typescript
+// For quick assessment, test only one power mode with shorter duration
+const quickBaseline = await mcpServer.callTool('run_performance_baseline', {
+  minerId: 'miner-002',
+  duration: 60,           // 1 minute (minimum allowed)
+  modes: ['medium'],      // Test current mode only
+  detailLevel: 'concise'
+});
+
+// Poll once after 90 seconds (60s test + 30s margin)
+await new Promise(resolve => setTimeout(resolve, 90000));
+
+const quickResults = await mcpServer.callTool('check_baseline_job_status', {
+  jobId: quickBaseline.jobId
+});
+
+console.log(`Quick baseline: ${quickResults.results.baseline.hashrate} TH/s at ${quickResults.results.baseline.power}W`);
+```
+
+**Concurrent Baseline Tests (Multiple Miners)**:
+```typescript
+// Run baseline tests on multiple miners simultaneously
+const miners = ['miner-001', 'miner-002', 'miner-003'];
+const jobs = [];
+
+// Start all tests concurrently
+for (const minerId of miners) {
+  const job = await mcpServer.callTool('run_performance_baseline', {
+    minerId,
+    duration: 300,
+    modes: ['low', 'medium', 'high']
+  });
+  jobs.push({ minerId, jobId: job.jobId });
+}
+
+console.log(`Started ${jobs.length} concurrent baseline tests`);
+
+// Poll all jobs until completion
+const allResults = await Promise.all(
+  jobs.map(async ({ minerId, jobId }) => {
+    let status;
+    do {
+      await new Promise(resolve => setTimeout(resolve, 60000));
+      status = await mcpServer.callTool('check_baseline_job_status', { jobId });
+    } while (status.status === 'pending' || status.status === 'running');
+
+    return { minerId, status: status.status, results: status.results };
+  })
+);
+
+// Compare results across miners
+console.log('\n=== Fleet Baseline Comparison ===');
+allResults.forEach(({ minerId, results }) => {
+  console.log(`${minerId}: ${results.baseline.hashrate} TH/s @ ${results.baseline.efficiency} J/TH (${results.optimalMode} mode)`);
+});
+```
+
 ---
 
 ## Best Practices

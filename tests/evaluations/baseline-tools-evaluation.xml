@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <metadata>
+    <version>1.0.0</version>
+    <created>2025-12-31</created>
+    <total_questions>15</total_questions>
+    <passing_criteria>15/15 correct</passing_criteria>
+    <description>Evaluation harness for run_performance_baseline and check_baseline_job_status MCP tools</description>
+  </metadata>
+
+  <!-- ============================================ -->
+  <!-- HAPPY PATH: Basic Baseline Test -->
+  <!-- ============================================ -->
+
+  <qa_pair id="1">
+    <question>Run a performance baseline test on miner-001 to measure its optimal hashrate and efficiency</question>
+    <answer>
+      Job created successfully:
+      - Job ID: baseline-[timestamp]
+      - Status: pending
+      - Estimated Duration: 900s (300s per mode × 3 modes)
+      - Modes to test: low, medium, high
+
+      Use check_baseline_job_status with the job ID to monitor progress.
+    </answer>
+    <tools_used>run_performance_baseline</tools_used>
+    <complexity>simple</complexity>
+    <category>monitoring</category>
+  </qa_pair>
+
+  <qa_pair id="2">
+    <question>Check the status of baseline job baseline-123456789</question>
+    <answer>
+      Job Status:
+      - Job ID: baseline-123456789
+      - Status: running
+      - Progress: 1/3 modes completed (33%)
+      - Current Mode: medium
+
+      Job still in progress. Call again to check for completion.
+    </answer>
+    <tools_used>check_baseline_job_status</tools_used>
+    <complexity>simple</complexity>
+    <category>monitoring</category>
+  </qa_pair>
+
+  <qa_pair id="3">
+    <question>Get the detailed results for completed baseline job baseline-123456789</question>
+    <answer>
+      Baseline Test Results (Completed):
+      - Job ID: baseline-123456789
+      - Status: completed
+      - Progress: 3/3 modes (100%)
+
+      Optimal Configuration:
+      - Best Mode: low
+      - Hashrate: 92.0 TH/s
+      - Power: 2500W
+      - Efficiency: 27.2 J/TH
+      - Temperature: 62°C
+
+      Recommendations:
+      1. Switch to low power mode for optimal efficiency (27.2 J/TH)
+      2. Temperature is within safe range (62°C)
+
+      Detailed Metrics:
+      - Low Mode: 92.0 TH/s, 2500W, 27.2 J/TH, 62°C
+      - Medium Mode: 95.5 TH/s, 3000W, 31.4 J/TH, 65°C
+      - High Mode: 98.5 TH/s, 3500W, 35.5 J/TH, 68°C
+    </answer>
+    <tools_used>check_baseline_job_status</tools_used>
+    <complexity>simple</complexity>
+    <category>monitoring</category>
+  </qa_pair>
+
+  <!-- ============================================ -->
+  <!-- CUSTOM MODES: Testing Specific Power Modes -->
+  <!-- ============================================ -->
+
+  <qa_pair id="4">
+    <question>Run a baseline test on miner-002 but only test the low and high power modes</question>
+    <answer>
+      Job created successfully:
+      - Job ID: baseline-[timestamp]
+      - Status: pending
+      - Estimated Duration: 600s (300s per mode × 2 modes)
+      - Modes to test: low, high
+
+      The test will skip medium mode as requested.
+    </answer>
+    <tools_used>run_performance_baseline</tools_used>
+    <complexity>medium</complexity>
+    <category>monitoring</category>
+  </qa_pair>
+
+  <qa_pair id="5">
+    <question>Run a quick 60-second baseline test on miner-003 for the medium power mode only</question>
+    <answer>
+      Job created successfully:
+      - Job ID: baseline-[timestamp]
+      - Status: pending
+      - Estimated Duration: 60s
+      - Modes to test: medium
+      - Duration per mode: 60s
+
+      This is a quick test for initial assessment.
+    </answer>
+    <tools_used>run_performance_baseline</tools_used>
+    <complexity>medium</complexity>
+    <category>monitoring</category>
+  </qa_pair>
+
+  <!-- ============================================ -->
+  <!-- DETAIL LEVELS: Concise vs Verbose -->
+  <!-- ============================================ -->
+
+  <qa_pair id="6">
+    <question>Run a baseline test on miner-004 with verbose output to see all details</question>
+    <answer>
+      Job created successfully (verbose output):
+      - Job ID: baseline-[timestamp]
+      - Status: pending
+      - Progress: { total: 3, completed: 0, failed: 0, percentage: 0 }
+      - Estimated Duration: 900 seconds
+      - Modes: ["low", "medium", "high"]
+      - Started At: [ISO timestamp]
+
+      Detailed information includes full job metadata and timestamps.
+    </answer>
+    <tools_used>run_performance_baseline</tools_used>
+    <complexity>simple</complexity>
+    <category>monitoring</category>
+  </qa_pair>
+
+  <qa_pair id="7">
+    <question>Get concise status update for job baseline-987654321</question>
+    <answer>
+      Job Status (concise):
+      - Job ID: baseline-987654321
+      - Status: running
+      - Progress: 2/3 (67%)
+
+      Minimal output for quick status check.
+    </answer>
+    <tools_used>check_baseline_job_status</tools_used>
+    <complexity>simple</complexity>
+    <category>monitoring</category>
+  </qa_pair>
+
+  <!-- ============================================ -->
+  <!-- EDGE CASES: Offline Miners -->
+  <!-- ============================================ -->
+
+  <qa_pair id="8">
+    <question>Run a baseline test on miner-999 which is currently offline</question>
+    <answer>
+      Error: Miner miner-999 is offline
+
+      Suggestion: Ensure miner is powered on and reachable before running baseline tests.
+
+      Cannot start baseline test on offline miner.
+    </answer>
+    <tools_used>run_performance_baseline</tools_used>
+    <complexity>simple</complexity>
+    <category>monitoring</category>
+  </qa_pair>
+
+  <!-- ============================================ -->
+  <!-- ERROR HANDLING: Invalid Inputs -->
+  <!-- ============================================ -->
+
+  <qa_pair id="9">
+    <question>Run a baseline test on miner-nonexistent</question>
+    <answer>
+      Error: Miner miner-nonexistent not found in registry
+
+      Suggestion: Use list_miners to see available miners
+
+      Cannot start baseline test for unregistered miner.
+    </answer>
+    <tools_used>run_performance_baseline</tools_used>
+    <complexity>simple</complexity>
+    <category>monitoring</category>
+  </qa_pair>
+
+  <qa_pair id="10">
+    <question>Check status of job invalid-job-id</question>
+    <answer>
+      Error: Job invalid-job-id not found
+
+      Suggestion: Verify the job ID is correct. Job IDs are returned when starting a baseline test.
+
+      Cannot retrieve status for non-existent job.
+    </answer>
+    <tools_used>check_baseline_job_status</tools_used>
+    <complexity>simple</complexity>
+    <category>monitoring</category>
+  </qa_pair>
+
+  <qa_pair id="11">
+    <question>Run a baseline test on miner-001 with test duration of 30 seconds</question>
+    <answer>
+      Error: Duration validation failed
+
+      Expected: Duration must be between 60-3600 seconds
+      Received: 30 seconds
+
+      Suggestion: Use a minimum duration of 60 seconds to collect meaningful baseline data.
+    </answer>
+    <tools_used>run_performance_baseline</tools_used>
+    <complexity>simple</complexity>
+    <category>monitoring</category>
+  </qa_pair>
+
+  <qa_pair id="12">
+    <question>Run a baseline test on miner-001 using "extreme" power mode</question>
+    <answer>
+      Error: Power mode validation failed
+
+      Expected: Power mode must be one of: low, medium, high
+      Received: extreme
+
+      Suggestion: Use valid power modes (low, medium, or high).
+    </answer>
+    <tools_used>run_performance_baseline</tools_used>
+    <complexity>simple</complexity>
+    <category>monitoring</category>
+  </qa_pair>
+
+  <!-- ============================================ -->
+  <!-- MULTI-STEP WORKFLOW: Complete Test Cycle -->
+  <!-- ============================================ -->
+
+  <qa_pair id="13">
+    <question>I want to find the optimal power mode for miner-005. Run a complete baseline test and tell me which mode is most efficient.</question>
+    <answer>
+      [Agent should perform complete workflow:]
+
+      Step 1: Call run_performance_baseline
+      - Parameters: { minerId: "miner-005", modes: ["low", "medium", "high"] }
+      - Result: Job ID baseline-[timestamp] created
+
+      Step 2: Poll check_baseline_job_status
+      - Wait for job to complete
+      - Status transitions: pending → running → completed
+
+      Step 3: Retrieve and analyze results
+      - Read recommendations from completed job
+      - Identify optimal mode (lowest efficiency J/TH)
+
+      Final Answer:
+      "Based on the baseline test results, the optimal power mode for miner-005 is [mode] with an efficiency of [X.X] J/TH. This mode provides the best balance of hashrate ([XX.X] TH/s) and power consumption ([XXXX]W)."
+    </answer>
+    <tools_used>run_performance_baseline, check_baseline_job_status</tools_used>
+    <complexity>complex</complexity>
+    <category>monitoring</category>
+  </qa_pair>
+
+  <!-- ============================================ -->
+  <!-- JOB FAILURE HANDLING -->
+  <!-- ============================================ -->
+
+  <qa_pair id="14">
+    <question>What happened with baseline job baseline-failed-123? It shows as failed.</question>
+    <answer>
+      Job Status (Failed):
+      - Job ID: baseline-failed-123
+      - Status: failed
+      - Progress: 1/3 modes completed
+      - Error: Miner connection lost during test
+
+      Error Details:
+      - Timestamp: [ISO timestamp]
+      - Error Message: Miner connection lost during test
+      - Suggestion: Check miner connectivity and try again
+
+      The baseline test was interrupted and did not complete all power modes.
+    </answer>
+    <tools_used>check_baseline_job_status</tools_used>
+    <complexity>medium</complexity>
+    <category>troubleshooting</category>
+  </qa_pair>
+
+  <!-- ============================================ -->
+  <!-- BATCH OPERATIONS: Concurrent Tests -->
+  <!-- ============================================ -->
+
+  <qa_pair id="15">
+    <question>Can I run baseline tests on multiple miners at the same time?</question>
+    <answer>
+      Yes, you can run concurrent baseline tests:
+
+      Option 1: Sequential calls to run_performance_baseline
+      - Call run_performance_baseline for miner-001 → Get job ID 1
+      - Call run_performance_baseline for miner-002 → Get job ID 2
+      - Each test runs independently in the background
+
+      Option 2: Monitor multiple jobs
+      - Use check_baseline_job_status with each job ID
+      - Track progress of multiple tests simultaneously
+
+      Example workflow:
+      1. Start test on miner-001 → Job baseline-001
+      2. Start test on miner-002 → Job baseline-002
+      3. Poll both jobs until completion
+
+      Each miner's test runs independently without blocking other operations.
+    </answer>
+    <tools_used>run_performance_baseline, check_baseline_job_status</tools_used>
+    <complexity>complex</complexity>
+    <category>batch_operations</category>
+  </qa_pair>
+
+</evaluation>
