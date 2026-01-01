@@ -212,6 +212,13 @@ export function createMinerStatusFixture(
     tunerState: createTunerState(2500), // Low power mode
   };
 
+  // Assert base structure is complete (required for safe deep merge)
+  if (!base.hashboards || !base.tunerState) {
+    throw new Error(
+      'createMinerStatusFixture: base fixture must have hashboards and tunerState'
+    );
+  }
+
   if (!overrides) {
     return base;
   }
@@ -223,24 +230,24 @@ export function createMinerStatusFixture(
     // Manually deep merge hashboards object
     hashboards: overrides.hashboards
       ? {
-          ...base.hashboards!,
+          ...base.hashboards,
           ...overrides.hashboards,
           // Preserve base hashboards array unless explicitly overridden
           hashboards:
-            overrides.hashboards.hashboards ?? base.hashboards!.hashboards,
+            overrides.hashboards.hashboards ?? base.hashboards.hashboards,
         }
       : base.hashboards,
     // Manually deep merge tunerState object
     tunerState: overrides.tunerState
       ? {
-          ...base.tunerState!,
+          ...base.tunerState,
           ...overrides.tunerState,
           mode_state: overrides.tunerState.mode_state
             ? {
-                ...base.tunerState!.mode_state,
+                ...base.tunerState.mode_state,
                 ...overrides.tunerState.mode_state,
               }
-            : base.tunerState!.mode_state,
+            : base.tunerState.mode_state,
         }
       : base.tunerState,
   };
