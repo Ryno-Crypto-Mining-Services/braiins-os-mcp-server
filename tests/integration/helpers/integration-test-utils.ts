@@ -11,6 +11,42 @@ import type { JobService } from '../../../src/services/job.service';
 import type { MinerStatusSummary } from '../../../src/services/miner.service';
 
 /**
+ * Test Timeout Configuration
+ *
+ * Provides consistent timeout values for integration tests to prevent
+ * flaky tests in CI environments. Uses 3x operation duration for wait
+ * timeouts to account for slower CI machines.
+ */
+export const TEST_TIMEOUTS = {
+  /**
+   * Duration for baseline tests (minimum allowed by tool)
+   */
+  BASELINE_DURATION_SECONDS: 60,
+
+  /**
+   * Wait timeout for 60s baseline test
+   * Formula: 3x operation duration for CI safety
+   */
+  WAIT_BASELINE_MS: 60_000 * 3, // 180 seconds (3 minutes)
+
+  /**
+   * Jest timeout for 60s baseline test
+   * Formula: wait timeout + 30s buffer for test overhead
+   */
+  JEST_BASELINE_MS: 60_000 * 3 + 30_000, // 210 seconds (3.5 minutes)
+
+  /**
+   * Wait timeout for multi-mode tests (3 modes × 60s each)
+   */
+  WAIT_MULTI_MODE_MS: 60_000 * 3 * 3, // 540 seconds (9 minutes)
+
+  /**
+   * Jest timeout for multi-mode tests
+   */
+  JEST_MULTI_MODE_MS: 60_000 * 3 * 3 + 30_000, // 570 seconds (9.5 minutes)
+} as const;
+
+/**
  * Wait for a job to reach a terminal state (completed or failed).
  *
  * Polls the job status at 100ms intervals until completion or timeout.
@@ -176,5 +212,36 @@ export function createMinerStatusFixture(
     tunerState: createTunerState(2500), // Low power mode
   };
 
-  return { ...base, ...overrides };
+  if (!overrides) {
+    return base;
+  }
+
+  // Deep merge nested objects to prevent incomplete structures
+  return {
+    ...base,
+    ...overrides,
+    // Manually deep merge hashboards object
+    hashboards: overrides.hashboards
+      ? {
+          ...base.hashboards!,
+          ...overrides.hashboards,
+          // Preserve base hashboards array unless explicitly overridden
+          hashboards:
+            overrides.hashboards.hashboards ?? base.hashboards!.hashboards,
+        }
+      : base.hashboards,
+    // Manually deep merge tunerState object
+    tunerState: overrides.tunerState
+      ? {
+          ...base.tunerState!,
+          ...overrides.tunerState,
+          mode_state: overrides.tunerState.mode_state
+            ? {
+                ...base.tunerState!.mode_state,
+                ...overrides.tunerState.mode_state,
+              }
+            : base.tunerState!.mode_state,
+        }
+      : base.tunerState,
+  };
 }

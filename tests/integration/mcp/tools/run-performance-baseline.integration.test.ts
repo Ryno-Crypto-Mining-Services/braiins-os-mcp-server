@@ -28,6 +28,7 @@ import {
   createHashboard,
   createMinerStatusFixture,
   createTunerState,
+  TEST_TIMEOUTS,
   waitForJobCompletion,
 } from '../../helpers/integration-test-utils';
 
@@ -142,8 +143,8 @@ describe('Performance Baseline Integration Tests (Real)', () => {
       const jobId = startResponse.jobId as string;
 
       // Wait for background processing to complete (60s test + overhead)
-      // Using longer timeout to account for actual sampling intervals
-      await waitForJobCompletion(jobService, jobId, 90000);
+      // Using 3x duration timeout for CI safety
+      await waitForJobCompletion(jobService, jobId, TEST_TIMEOUTS.WAIT_BASELINE_MS);
 
       // Verify job completed successfully
       const finalResult = await checkBaselineJobStatusTool.handler(
@@ -171,7 +172,7 @@ describe('Performance Baseline Integration Tests (Real)', () => {
 
       // Verify efficiency calculation: (2500 / 97.5) * 1000 = 25.64 J/TH
       expect(results.baseline.efficiency).toBeCloseTo(25.6, 1);
-    }, 120000); // Extended timeout for real processing
+    }, TEST_TIMEOUTS.JEST_BASELINE_MS); // Extended timeout for real processing + CI overhead
 
     it('should handle unit conversion from gigahash to terahash', async () => {
       // Setup: Mock status with gigahash_per_second instead of terahash_per_second
@@ -225,7 +226,7 @@ describe('Performance Baseline Integration Tests (Real)', () => {
 
       const startResponse = JSON.parse(getTextFromResult(startResult));
       const jobId = startResponse.jobId as string;
-      await waitForJobCompletion(jobService, jobId, 90000);
+      await waitForJobCompletion(jobService, jobId, TEST_TIMEOUTS.WAIT_BASELINE_MS);
 
       const finalResult = await checkBaselineJobStatusTool.handler(
         { jobId, detailLevel: 'verbose' },
@@ -237,7 +238,7 @@ describe('Performance Baseline Integration Tests (Real)', () => {
 
       // Verify conversion: (32500 + 31800) / 1000 = 64.3 TH/s
       expect(results.baseline.hashrate).toBeCloseTo(64.3, 1);
-    }, 120000);
+    }, TEST_TIMEOUTS.JEST_BASELINE_MS);
 
     it('should handle missing hashrate data gracefully', async () => {
       // Setup: Mock status with missing hashrate stats
@@ -272,7 +273,7 @@ describe('Performance Baseline Integration Tests (Real)', () => {
 
       const startResponse = JSON.parse(getTextFromResult(startResult));
       const jobId = startResponse.jobId as string;
-      await waitForJobCompletion(jobService, jobId, 90000);
+      await waitForJobCompletion(jobService, jobId, TEST_TIMEOUTS.WAIT_BASELINE_MS);
 
       const finalResult = await checkBaselineJobStatusTool.handler(
         { jobId, detailLevel: 'verbose' },
@@ -284,7 +285,7 @@ describe('Performance Baseline Integration Tests (Real)', () => {
 
       // Hashrate should be 0 when no data available
       expect(results.baseline.hashrate).toBe(0);
-    }, 120000);
+    }, TEST_TIMEOUTS.JEST_BASELINE_MS);
 
     it('should fall back to power target when tuner state is missing', async () => {
       // Setup: Mock status without tuner state
@@ -301,7 +302,7 @@ describe('Performance Baseline Integration Tests (Real)', () => {
 
       const startResponse = JSON.parse(getTextFromResult(startResult));
       const jobId = startResponse.jobId as string;
-      await waitForJobCompletion(jobService, jobId, 90000);
+      await waitForJobCompletion(jobService, jobId, TEST_TIMEOUTS.WAIT_BASELINE_MS);
 
       const finalResult = await checkBaselineJobStatusTool.handler(
         { jobId, detailLevel: 'verbose' },
@@ -313,7 +314,7 @@ describe('Performance Baseline Integration Tests (Real)', () => {
 
       // Power should fall back to mode target (low = 2500W)
       expect(results.baseline.power).toBe(2500);
-    }, 120000);
+    }, TEST_TIMEOUTS.JEST_BASELINE_MS);
   });
 
   describe('Error Propagation from Background Processor', () => {
@@ -333,7 +334,7 @@ describe('Performance Baseline Integration Tests (Real)', () => {
       const jobId = startResponse.jobId as string;
 
       // Wait for job to fail
-      await waitForJobCompletion(jobService, jobId, 90000);
+      await waitForJobCompletion(jobService, jobId, TEST_TIMEOUTS.WAIT_BASELINE_MS);
 
       const statusResult = await checkBaselineJobStatusTool.handler(
         { jobId, detailLevel: 'verbose' },
@@ -345,7 +346,7 @@ describe('Performance Baseline Integration Tests (Real)', () => {
       expect(status.status).toBe('failed');
       expect(status.errors).toHaveLength(1);
       expect(status.errors[0].error).toContain('gRPC connection lost');
-    }, 120000);
+    }, TEST_TIMEOUTS.JEST_BASELINE_MS);
 
     it('should handle setPowerTarget failures', async () => {
       // Setup: setPowerTarget fails
@@ -360,14 +361,14 @@ describe('Performance Baseline Integration Tests (Real)', () => {
 
       const startResponse = JSON.parse(getTextFromResult(startResult));
       const jobId = startResponse.jobId as string;
-      await waitForJobCompletion(jobService, jobId, 90000);
+      await waitForJobCompletion(jobService, jobId, TEST_TIMEOUTS.WAIT_BASELINE_MS);
 
       const statusResult = await checkBaselineJobStatusTool.handler({ jobId }, context);
       const status = JSON.parse(getTextFromResult(statusResult));
 
       expect(status.status).toBe('failed');
       expect(status.errors[0].error).toContain('Failed to set power target');
-    }, 120000);
+    }, TEST_TIMEOUTS.JEST_BASELINE_MS);
   });
 
   describe('Recommendation Generation Logic', () => {
@@ -442,7 +443,7 @@ describe('Performance Baseline Integration Tests (Real)', () => {
 
       const startResponse = JSON.parse(getTextFromResult(startResult));
       const jobId = startResponse.jobId as string;
-      await waitForJobCompletion(jobService, jobId, 90000);
+      await waitForJobCompletion(jobService, jobId, TEST_TIMEOUTS.WAIT_BASELINE_MS);
 
       const finalResult = await checkBaselineJobStatusTool.handler(
         { jobId, detailLevel: 'verbose' },
@@ -456,7 +457,7 @@ describe('Performance Baseline Integration Tests (Real)', () => {
       expect(results.recommendations).toEqual(
         expect.arrayContaining([expect.stringContaining('high')])
       );
-    }, 120000);
+    }, TEST_TIMEOUTS.JEST_BASELINE_MS);
   });
 
   describe('Multi-Mode Testing', () => {
@@ -505,7 +506,7 @@ describe('Performance Baseline Integration Tests (Real)', () => {
 
       const startResponse = JSON.parse(getTextFromResult(startResult));
       const jobId = startResponse.jobId as string;
-      await waitForJobCompletion(jobService, jobId, 240000); // 60s * 3 modes + overhead
+      await waitForJobCompletion(jobService, jobId, TEST_TIMEOUTS.WAIT_MULTI_MODE_MS); // 60s * 3 modes with 3x safety margin
 
       const finalResult = await checkBaselineJobStatusTool.handler(
         { jobId, detailLevel: 'verbose' },
@@ -528,6 +529,6 @@ describe('Performance Baseline Integration Tests (Real)', () => {
       expect(lowMode?.metrics.power).toBe(2500);
       expect(mediumMode?.metrics.power).toBe(3000);
       expect(highMode?.metrics.power).toBe(3500);
-    }, 300000); // Extended timeout for 3 modes
+    }, TEST_TIMEOUTS.JEST_MULTI_MODE_MS); // Extended timeout for 3 modes + CI overhead
   });
 });
