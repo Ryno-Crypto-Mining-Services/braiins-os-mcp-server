@@ -76,6 +76,14 @@ function createLogger(): Logger {
         format: combine(colorize(), timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), errors({ stack: true }), structuredFormat),
       })
     );
+  } else {
+    // In test environment, use a silent console transport to prevent Winston stream errors
+    loggerTransports.push(
+      new transports.Console({
+        silent: true, // Don't output anything
+        format: combine(timestamp(), format.json()),
+      })
+    );
   }
 
   // File transport for production
